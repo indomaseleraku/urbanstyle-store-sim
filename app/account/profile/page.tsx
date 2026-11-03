@@ -72,7 +72,7 @@ export default function ProfilePage() {
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="Contoh: Budi Santoso"
+                placeholder="Contoh: Kimy Eka Ardiansyah"
                 className="w-full pl-9 pr-3 py-2.5 border border-zinc-300 text-base md:text-xs focus:outline-none focus:border-black font-medium rounded-none"
                 required
               />

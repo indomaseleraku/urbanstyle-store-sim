@@ -260,7 +260,7 @@ export const INITIAL_ORDERS: Order[] = [
 export const INITIAL_EMPLOYEES: Employee[] = [
   {
     id: 'emp-01',
-    name: 'Admin UrbanStyle',
+    name: 'Kimy Eka Ardiansyah',
     email: 'admin@urbanstyle.com',
     phone: '+62 812-3456-7890',
     role: 'superadmin',
@@ -373,7 +373,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     description: 'Payroll Total 12 Staf & Bonus Operasional Toko',
     amount: 68500000,
     date: '01 Okt 2026',
-    approvedBy: 'Admin Owner',
+    approvedBy: 'Kimy Eka (Owner)',
     status: 'approved'
   },
   {
@@ -382,7 +382,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     description: 'Sewa Fasilitas DC Cikarang & Listrik Operasional',
     amount: 14200000,
     date: '03 Okt 2026',
-    approvedBy: 'Admin Owner',
+    approvedBy: 'Kimy Eka (Owner)',
     status: 'approved'
   },
   {
@@ -400,7 +400,7 @@ export const INITIAL_EXPENSES: ExpenseItem[] = [
     description: 'Meta Ads & Kolaborasi Fotografi Lookbook Musim Gugur',
     amount: 12500000,
     date: '05 Okt 2026',
-    approvedBy: 'Admin Owner',
+    approvedBy: 'Kimy Eka (Owner)',
     status: 'approved'
   },
   {
@@ -461,7 +461,7 @@ export const INITIAL_LOGS: ActivityLog[] = [
   {
     id: 'log-03',
     timestamp: '14 Okt 08:45 WIB',
-    userName: 'Admin UrbanStyle',
+    userName: 'Kimy Eka Ardiansyah',
     userRole: 'superadmin',
     action: 'Export Laporan Keuangan',
     details: 'Mengunduh laporan Laba Rugi Q3 2026 ke format CSV/PDF',

@@ -1,6 +1,6 @@
 -- ==============================================================================
 -- URBANSTYLE STORE (SIM E-COMMERCE RETAIL FASHION) - HARDENED SUPABASE POSTGRESQL SCHEMA
--- Tugas Sistem Informasi Manajemen (SIM) - UrbanStyle Store Schema
+-- Dibuat untuk: Kimy Eka Ardiansyah (Teknik Informatika, Universitas Pamulang)
 -- Jalankan skrip ini langsung di Supabase Dashboard -> SQL Editor -> Run
 -- ==============================================================================
 

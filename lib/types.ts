@@ -176,22 +176,22 @@ export interface Order {
 export const BANK_ACCOUNTS: Record<string, { bankName: string; accountNumber: string; holderName: string }> = {
   BCA: {
     bankName: 'Bank Central Asia (BCA)',
-    accountNumber: '1234567890',
-    holderName: 'URBANSTYLE STORE OFFICIAL',
+    accountNumber: '8830192844',
+    holderName: 'KIMY EKA ARDIANSYAH / URBANSTYLE',
   },
   Mandiri: {
     bankName: 'Bank Mandiri',
-    accountNumber: '1230009876543',
-    holderName: 'URBANSTYLE STORE OFFICIAL',
+    accountNumber: '164009928101',
+    holderName: 'KIMY EKA ARDIANSYAH / URBANSTYLE',
   },
   BRI: {
     bankName: 'Bank Rakyat Indonesia (BRI)',
-    accountNumber: '012301009876501',
-    holderName: 'URBANSTYLE STORE OFFICIAL',
+    accountNumber: '012301001928502',
+    holderName: 'KIMY EKA ARDIANSYAH',
   },
   BNI: {
     bankName: 'Bank Negara Indonesia (BNI)',
-    accountNumber: '0992810001',
+    accountNumber: '0992814401',
     holderName: 'URBANSTYLE STORE OFFICIAL',
   },
 };

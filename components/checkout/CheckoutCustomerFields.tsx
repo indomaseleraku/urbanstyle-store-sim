@@ -67,7 +67,7 @@ export const CheckoutCustomerFields: React.FC<CheckoutCustomerFieldsProps> = ({
         <input
           type="text"
           required
-          placeholder="Contoh: Budi Santoso"
+          placeholder="Contoh: Kimy Eka Ardiansyah"
           value={name}
           onChange={(e) => setName(e.target.value)}
           className="w-full px-3.5 py-2.5 text-base md:text-sm border border-zinc-300 bg-zinc-50 focus:bg-white focus:outline-none focus:border-zinc-900 font-medium rounded-none"

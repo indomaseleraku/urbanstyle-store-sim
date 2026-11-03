@@ -15,9 +15,9 @@ export interface QRISResult {
   mode: 'dynamic' | 'static';
 }
 
-// Base QRIS Statis Merchant Resmi Bank Indonesia (NMID ID1099999999999 - URBANSTYLE STORE OFFICIAL)
+// Base QRIS Statis Merchant Resmi Bank Indonesia (NMID ID1025458911316 - warung koh kim)
 export const DEFAULT_BASE_STATIC_QRIS = 
-  '00020101021126610014COM.GO-JEK.WWW01189360091431037768610210G1037768610303UMI51440014ID.CO.QRIS.WWW0215ID10999999999990303UMI5204581253033605802ID5916URBANSTYLE STORE6007JAKARTA61051011062070703A01630405A3';
+  '00020101021126610014COM.GO-JEK.WWW01189360091431037768610210G1037768610303UMI51440014ID.CO.QRIS.WWW0215ID10254589113160303UMI5204581253033605802ID5914warung koh kim6008PEMALANG61055235262070703A0163044086';
 
 /**
  * Menghitung Checksum CRC-16 / CCITT-FALSE
@@ -94,7 +94,7 @@ export const qrisService = {
     const registeredMerchantName = tlvMap.get('59') || 'URBANSTYLE STORE';
 
     // Ekstrak NMID dari tag 51 atau tag 26
-    let nmid = 'ID1099999999999';
+    let nmid = 'ID1025458911316';
     const tagInfo = (tlvMap.get('51') || '') + ' ' + (tlvMap.get('26') || '');
     const nmidMatch = tagInfo.match(/ID[0-9]{13}/);
     if (nmidMatch) {

@@ -67,7 +67,7 @@ export function useAdminSuiteDomainState(role: Role) {
     const newLog: ActivityLog = {
       id: `log-${Date.now()}`,
       timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
-      userName: role === 'superadmin' ? 'Super Admin (Owner)' : role === 'store_admin' ? 'Staf Kasir' : 'Staf Gudang',
+      userName: role === 'superadmin' ? 'Kimy Eka (Owner)' : role === 'store_admin' ? 'Staf Kasir' : 'Staf Gudang',
       userRole: role,
       action,
       details,

@@ -45,7 +45,7 @@ export default function AuthInputFields({
               required
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="Contoh: Budi Santoso"
+              placeholder="Contoh: Kimy Eka Ardiansyah"
               className="w-full pl-9 pr-3 py-2 border border-zinc-300 text-xs focus:outline-hidden focus:border-black"
             />
           </div>

@@ -1,6 +1,6 @@
 -- ============================================================================
 -- URBANSTYLE STORE - SUPABASE DATABASE SCHEMA V3.0 (LIFEWEAR REDESIGN)
--- Tugas Sistem Informasi Manajemen (SIM) - UrbanStyle Store Schema
+-- Mahasiswa: Kimy Eka Ardiansyah (Teknik Informatika, Universitas Pamulang)
 -- ============================================================================
 
 -- 1. ENUMS & EXTENSIONS

@@ -92,7 +92,7 @@ export default function InvoicePaymentSection({ order }: InvoicePaymentSectionPr
                 {selectedBank?.accountNumber || '8830-9912-4411'}
               </p>
               <p className="text-[10px] text-zinc-500 font-bold">
-                a/n {selectedBank?.holderName || 'URBANSTYLE OFFICIAL'}
+                a/n {selectedBank?.holderName || 'KIMY EKA ARDIANSYAH / URBANSTYLE'}
               </p>
             </div>
             <CopyButton

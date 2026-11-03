@@ -131,10 +131,10 @@ export const DynamicQRISCard: React.FC<DynamicQRISCardProps> = ({
       {/* Merchant Title & NMID */}
       <div className="space-y-0.5">
         <p className="text-xs font-black uppercase tracking-wider text-zinc-950">
-          {qrisResult?.merchantName || 'URBANSTYLE STORE'}
+          {qrisResult?.merchantName || 'WARUNG KOH KIM'}
         </p>
         <p className="text-[10px] text-zinc-500 font-mono tracking-wide">
-          NMID: <strong className="text-zinc-800">{qrisResult?.nmid || 'ID1099999999999'}</strong>
+          NMID: <strong className="text-zinc-800">{qrisResult?.nmid || 'ID1025458911316'}</strong>
         </p>
       </div>
 

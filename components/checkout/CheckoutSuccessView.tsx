@@ -91,7 +91,7 @@ export const CheckoutSuccessView: React.FC<CheckoutSuccessViewProps> = ({
             <div>
               <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">NOMOR REKENING TUJUAN</p>
               <p className="text-base font-mono font-black text-zinc-950 tracking-wider">
-                {BANK_ACCOUNTS[order.bank_name || 'BCA']?.accountNumber || '1234567890'}
+                {BANK_ACCOUNTS[order.bank_name || 'BCA']?.accountNumber || '8830192844'}
               </p>
               <p className="text-[11px] text-zinc-600 font-medium pt-0.5">
                 a.n. {BANK_ACCOUNTS[order.bank_name || 'BCA']?.holderName || 'URBANSTYLE STORE'}
@@ -99,7 +99,7 @@ export const CheckoutSuccessView: React.FC<CheckoutSuccessViewProps> = ({
             </div>
             <button
               type="button"
-              onClick={() => copyRekening(BANK_ACCOUNTS[order.bank_name || 'BCA']?.accountNumber || '1234567890')}
+              onClick={() => copyRekening(BANK_ACCOUNTS[order.bank_name || 'BCA']?.accountNumber || '8830192844')}
               className="px-3 py-1.5 text-xs font-bold uppercase bg-zinc-900 text-white hover:bg-[#E60012] flex items-center gap-1 transition-colors"
             >
               {copiedRekening ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}

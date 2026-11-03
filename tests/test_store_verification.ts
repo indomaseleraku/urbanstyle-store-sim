@@ -108,7 +108,7 @@ async function runTests() {
 
   const orderResult = await dataStore.createOrder({
     user_id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
-    customer_name: 'Budi Santoso',
+    customer_name: 'Kimy Eka Ardiansyah',
     customer_phone: '081234567890',
     customer_address: 'Universitas Pamulang, Tangerang Selatan',
     shipping_courier: 'J&T Express',
@@ -147,7 +147,7 @@ async function runTests() {
   // 1.4b Alur Transaksi TPS Bank Transfer dengan Kode Unik 3 Digit (PRD V5.2 FR-13)
   const btOrderResult = await dataStore.createOrder({
     user_id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
-    customer_name: 'Budi Santoso',
+    customer_name: 'Kimy Eka Ardiansyah',
     customer_phone: '081234567890',
     customer_address: 'Universitas Pamulang, Tangerang Selatan',
     shipping_courier: 'JNE Reguler',
@@ -223,7 +223,7 @@ async function runTests() {
 
   // 1.6 Portal Member: Profil & Buku Alamat
   const userProfile = await dataStore.getUserProfile('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11');
-  assert.ok(userProfile, 'Profil user Budi ditemukan');
+  assert.ok(userProfile, 'Profil user Kimy ditemukan');
   assert.equal(userProfile?.role, 'customer', 'Role member terkonfirmasi customer');
 
   const userAddrs = await dataStore.getUserAddresses('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11');
@@ -317,8 +317,8 @@ async function runTests() {
   assert.ok(qrisRes.rawPayload.startsWith('000201010212'), 'Header QRIS valid: Format 01 & Tipe Dinamis 12');
   assert.ok(qrisRes.rawPayload.includes('5406299000'), 'Tag 54 menyuntikkan nominal tagihan Rp 299.000');
   assert.ok(qrisRes.rawPayload.includes('5802ID'), 'Tag 58 Negara ID valid');
-  assert.equal(qrisRes.nmid, 'ID1099999999999', 'NMID resmi merchant terdeteksi tepat ID1099999999999');
-  assert.ok(qrisRes.merchantName.toLowerCase().includes('urbanstyle store'), 'Nama merchant resmi urbanstyle store terdeteksi');
+  assert.equal(qrisRes.nmid, 'ID1025458911316', 'NMID resmi merchant terdeteksi tepat ID1025458911316');
+  assert.ok(qrisRes.merchantName.toLowerCase().includes('warung koh kim'), 'Nama merchant resmi warung koh kim terdeteksi');
   assert.ok(qrisRes.rawPayload.endsWith(`6304${qrisRes.crc}`), 'Tag 63 Checksum CRC-16 CCITT tersemat di ujung payload');
   assert.ok(qrisRes.dataUrl.startsWith('data:image/png;base64,'), 'Gambar barcode QRIS dirender ke Data URL PNG valid');
   console.log(`  ✓ QRIS Dinamis Standar EMVCo & CRC-16 valid: Merchant ${qrisRes.merchantName} (NMID: ${qrisRes.nmid}), Nominal Rp ${qrisRes.amount.toLocaleString('id-ID')}, CRC #${qrisRes.crc}`);

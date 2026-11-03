@@ -188,7 +188,7 @@ export default function MemberLoyaltyBanner({ user, onOpenAuthModal }: MemberLoy
                       Nama Anggota
                     </span>
                     <span className="font-black uppercase tracking-wide text-zinc-100 font-sans text-sm">
-                      {user?.full_name || 'MEMBER URBANSTYLE'}
+                      {user?.full_name || 'KIMY EKA ARDIANSYAH'}
                     </span>
                   </div>
                   <div className="text-right">

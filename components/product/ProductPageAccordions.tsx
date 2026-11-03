@@ -175,7 +175,7 @@ export const ProductPageAccordions: React.FC<ProductPageAccordionsProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="Nama Anda (contoh: Budi Santoso)"
+                  placeholder="Nama Anda (contoh: Kimy Eka)"
                   value={reviewerName}
                   onChange={(e) => setReviewerName(e.target.value)}
                   className="w-full p-2 border border-zinc-300 text-base md:text-xs bg-white focus:outline-none rounded-none"
