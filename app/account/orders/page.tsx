@@ -11,31 +11,42 @@ import { Order } from '@/lib/types';
 import { Package, Truck, FileText, ArrowRight, Clock } from 'lucide-react';
 
 export default function AccountOrdersPage() {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    if (authLoading) return;
+    let active = true;
     async function loadOrders() {
       if (user) {
         const allOrders = await dataStore.getOrders(user.id);
-        setOrders(allOrders);
+        if (active) setOrders(allOrders);
+      } else if (active) {
+        setOrders([]);
       }
-      setIsLoading(false);
+      if (active) setIsLoading(false);
     }
     loadOrders();
-  }, [user]);
+    return () => {
+      active = false;
+    };
+  }, [user, authLoading]);
 
-  const getStatusBadge = (status: Order['status']) => {
+  const getStatusBadge = (status: Order['status'] | string) => {
     switch (status) {
       case 'Dibayar':
         return 'bg-blue-100 text-blue-800 border-blue-200';
       case 'Dikemas':
+      case 'Dipacking':
+      case 'Diproses':
         return 'bg-amber-100 text-amber-800 border-amber-200';
       case 'Dikirim':
         return 'bg-purple-100 text-purple-800 border-purple-200';
       case 'Selesai':
         return 'bg-green-100 text-green-800 border-green-200';
+      case 'Dibatalkan':
+        return 'bg-red-100 text-red-800 border-red-200';
       case 'Menunggu Pembayaran':
       default:
         return 'bg-zinc-100 text-zinc-800 border-zinc-200';

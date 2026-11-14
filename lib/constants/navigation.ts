@@ -170,7 +170,7 @@ export const GENDER_TABS: GenderTab[] = [
   { label: 'SEMUA', value: 'all' },
   { label: 'WANITA', value: 'wanita' },
   { label: 'PRIA', value: 'pria' },
-  { label: 'LIMITED OFFER 🔥', value: 'sale', highlight: true },
+  { label: 'LIMITED OFFER', value: 'sale', highlight: true },
 ];
 
 export interface NavbarProps {

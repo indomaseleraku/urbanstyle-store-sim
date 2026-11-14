@@ -19,14 +19,17 @@ export const EmployeeTable: React.FC<EmployeeTableProps> = ({
   setSearchQuery,
   setEditingEmp,
 }) => {
-  const { employees, toggleEmployeeStatus, formatRupiah } = useAdminSuite();
+  const { employees, toggleEmployeeStatus, formatRupiah, globalSearch } = useAdminSuite();
+
+  const query = (searchQuery || globalSearch).trim().toLowerCase();
 
   const filteredEmployees = employees.filter((emp) => {
     const matchesRole = filterRole === 'all' || emp.role === filterRole;
     const matchesSearch =
-      emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      emp.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      emp.department.toLowerCase().includes(searchQuery.toLowerCase());
+      !query ||
+      emp.name.toLowerCase().includes(query) ||
+      emp.email.toLowerCase().includes(query) ||
+      emp.department.toLowerCase().includes(query);
     return matchesRole && matchesSearch;
   });
 

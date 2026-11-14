@@ -10,7 +10,8 @@ import {
   Package, 
   MapPin, 
   Tag, 
-  ChevronDown 
+  ChevronDown,
+  Sparkles
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 
@@ -80,11 +81,12 @@ export default function UserAccountMenu() {
             <p className="text-xs font-bold text-zinc-950 truncate uppercase">{user.full_name}</p>
             <p className="text-[10px] text-zinc-500 truncate">{user.email}</p>
             <span
-              className={`inline-block mt-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 ${
+              className={`inline-flex items-center gap-1 mt-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 ${
                 isAdmin ? 'bg-red-100 text-[#E60012]' : 'bg-zinc-100 text-zinc-800'
               }`}
             >
-              {isAdmin ? '🛡️ Administrator SIM' : '✨ UrbanStyle Member'}
+              {isAdmin ? <Shield size={10} aria-hidden="true" /> : <Sparkles size={10} aria-hidden="true" />}
+              <span>{isAdmin ? 'Administrator SIM' : 'UrbanStyle Member'}</span>
             </span>
           </div>
 
@@ -129,7 +131,7 @@ export default function UserAccountMenu() {
                 className="flex items-center gap-2 px-4 py-2 text-[#E60012] font-bold hover:bg-red-50 border-t border-zinc-100"
               >
                 <Shield size={14} />
-                <span>Dasbor SIM Eksekutif</span>
+                <span>Dasbor Admin</span>
               </Link>
             )}
           </div>

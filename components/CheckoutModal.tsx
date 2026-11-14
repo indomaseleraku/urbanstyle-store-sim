@@ -5,7 +5,7 @@ import React from 'react';
 import { CartItem, Order } from '@/lib/types';
 import { X, ArrowRight, Lock } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
-import { COURIERS, FREE_SHIPPING_THRESHOLD } from './CartDrawer';
+import { COURIERS, FREE_SHIPPING_THRESHOLD } from '@/lib/constants/shipping';
 import { useCheckoutForm } from '@/lib/hooks/useCheckoutForm';
 import { CheckoutCustomerFields } from './checkout/CheckoutCustomerFields';
 import { CheckoutCouponSection } from './checkout/CheckoutCouponSection';
@@ -41,7 +41,7 @@ export default function CheckoutModal({
   onConfirmOrder,
   onOrderSuccess,
 }: CheckoutModalProps) {
-  const { user, openAuthModal } = useAuth();
+  const { user, isLoading: authLoading, openAuthModal } = useAuth();
   const subtotal = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
   const isFreeShipping = subtotal >= FREE_SHIPPING_THRESHOLD;
   const courierObj = COURIERS.find((c) => c.name === selectedCourier) || COURIERS[0];
@@ -57,6 +57,28 @@ export default function CheckoutModal({
   });
 
   if (!isOpen) return null;
+
+  if (items.length === 0 && !form.createdOrder) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+        <div className="bg-white w-full max-w-md border border-zinc-200 p-6 text-center space-y-4">
+          <p className="text-xs font-bold uppercase tracking-wider text-zinc-900">
+            Keranjang Belanja Kosong
+          </p>
+          <p className="text-xs text-zinc-500">
+            Tambahkan produk terlebih dahulu sebelum melanjutkan ke checkout.
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2.5 bg-zinc-950 text-white text-xs font-bold uppercase tracking-wider hover:bg-[#E60012] transition-colors cursor-pointer"
+          >
+            Kembali Belanja
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const grandTotal = Math.max(0, subtotal - form.discountAmount + shippingCost);
 
@@ -80,7 +102,11 @@ export default function CheckoutModal({
 
         {/* Content Body */}
         <div className="p-5 sm:p-6 max-h-[85vh] overflow-y-auto">
-          {!user ? (
+          {authLoading ? (
+            <div className="py-12 text-center text-xs text-zinc-400">
+              Memeriksa status sesi akun...
+            </div>
+          ) : !user ? (
             <div className="text-center py-8 px-4 space-y-4">
               <div className="w-12 h-12 bg-red-50 text-[#E60012] flex items-center justify-center mx-auto border border-red-200">
                 <Lock size={22} />

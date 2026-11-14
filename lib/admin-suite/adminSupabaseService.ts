@@ -1,261 +1,338 @@
-// lib/admin-suite/adminSupabaseService.ts
-// Supabase Data Connectors & Mappers untuk UrbanStyle Operations Suite
-
-import { supabase, isSupabaseConfigured } from '@/lib/services/supabaseClient';
-import { 
-  Product, Order, Employee, PromoVoucher, 
-  InboundShipment, ExpenseItem, StockAdjustment, ActivityLog, OrderStatus 
+import { supabase } from '@/lib/services/supabaseClient';
+import {
+  Product,
+  Order,
+  Employee,
+  InboundShipment,
+  ExpenseItem,
+  ActivityLog,
+  StockAdjustment,
+  PromoVoucher,
+  Role,
+  OrderStatus,
+  AdminCustomerReview,
+  StoreSettings,
 } from './types';
 
-// Helper Mapping Status Pesanan Antara Store & Admin
-export function mapDbStatusToAdminStatus(dbStatus: string): OrderStatus {
-  const s = (dbStatus || '').toLowerCase();
-  if (s.includes('menunggu') || s === 'pending_payment') return 'pending_payment';
-  if (s.includes('packing') || s.includes('dipacking')) return 'packing';
-  if (s.includes('kirim') || s === 'shipped') return 'shipped';
-  if (s.includes('selesai') || s === 'delivered') return 'delivered';
-  if (s.includes('batal') || s === 'cancelled') return 'cancelled';
-  return 'processing';
+async function getDb() {
+  if (typeof window === 'undefined') {
+    const { supabaseAdmin } = await import('@/lib/supabaseAdmin');
+    return supabaseAdmin;
+  }
+  return supabase;
 }
 
-export function mapAdminStatusToDbStatus(adminStatus: OrderStatus): string {
-  switch (adminStatus) {
-    case 'pending_payment': return 'Menunggu Pembayaran';
-    case 'processing': return 'Diproses';
-    case 'packing': return 'Dipacking';
-    case 'shipped': return 'Dikirim';
-    case 'delivered': return 'Selesai';
-    case 'cancelled': return 'Dibatalkan';
-    default: return 'Diproses';
-  }
-}
+const mapRole = (r: string): Role => {
+  if (r === 'kasir') return 'store_admin';
+  if (r === 'gudang') return 'warehouse_admin';
+  return 'superadmin';
+};
+
+const formatDateShort = (raw?: string | null): string => {
+  if (!raw) return new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return String(raw);
+  return parsed.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
+const formatDateTimeShort = (raw?: string | null): string => {
+  if (!raw) return '-';
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return String(raw);
+  return parsed.toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+};
 
 export const adminSupabaseService = {
-  // 1. Produk & Katalog
-  async getProducts(): Promise<Product[] | null> {
-    if (!isSupabaseConfigured || !supabase) return null;
-    try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('*, categories(name)')
-        .order('id', { ascending: true });
-      if (error || !data) return null;
+  async getProducts(): Promise<Product[]> {
+    const db = await getDb();
+    const [{ data, error }, { data: soldItems }] = await Promise.all([
+      db.from('products').select('*').order('id', { ascending: true }),
+      db
+        .from('order_items')
+        .select('product_id, quantity, orders!inner(status, payment_status)')
+        .neq('orders.status', 'cancelled'),
+    ]);
 
-      return data.map(p => ({
-        id: String(p.id),
-        sku: p.sku || `UB-${String(p.id).padStart(4, '0')}`,
+    if (error || !data) return [];
+
+    const salesByProduct = new Map<string, number>();
+    if (Array.isArray(soldItems)) {
+      for (const item of soldItems as Array<{
+        product_id: number | string;
+        quantity: number;
+        orders?: { status?: string; payment_status?: string } | Array<{ status?: string; payment_status?: string }>;
+      }>) {
+        const orderMeta = Array.isArray(item.orders) ? item.orders[0] : item.orders;
+        if (orderMeta?.status === 'pending_payment' && orderMeta?.payment_status !== 'paid') continue;
+        const pid = String(item.product_id);
+        salesByProduct.set(pid, (salesByProduct.get(pid) || 0) + Number(item.quantity || 0));
+      }
+    }
+
+    return data.map((p) => {
+      const idStr = String(p.id);
+      return {
+        id: idStr,
+        sku: p.sku || `SKU-${p.id}`,
         name: p.name,
-        category: p.categories?.name || 'Pakaian Pria',
-        price: Number(p.price) || 0,
+        category: p.category,
+        price: Number(p.price),
         originalPrice: p.original_price ? Number(p.original_price) : undefined,
-        stock: Number(p.stock) || 0,
-        safetyStock: Number(p.safety_stock) || 10,
-        rackLocation: p.rack_location || 'A-01-01',
-        status: (p.status as any) || 'active',
-        imageUrl: p.image_url || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=500',
-        salesCount: Number(p.reviews_count) || 8,
-        rating: Number(p.rating) || 4.8,
-        description: p.description || ''
-      }));
-    } catch {
-      return null;
-    }
+        stock: Number(p.stock || 0),
+        safetyStock: Number(p.safety_stock || 10),
+        rackLocation: p.rack_location || 'Rak A-01 / Bin 01',
+        status: (p.status as Product['status']) || 'active',
+        salesCount: salesByProduct.get(idStr) ?? 0,
+        rating: Number(p.rating ?? 0),
+        imageUrl: p.image_url || 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=800&q=85',
+        description: p.description || '',
+      };
+    });
   },
 
-  // 2. Pesanan & Order Items
-  async getOrders(): Promise<Order[] | null> {
-    if (!isSupabaseConfigured || !supabase) return null;
-    try {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*, order_items(*)')
-        .order('id', { ascending: false });
-      if (error || !data) return null;
+  async getOrders(): Promise<Order[]> {
+    const db = await getDb();
+    const { data, error } = await db
+      .from('orders')
+      .select(`*, order_items (*)`)
+      .order('created_at', { ascending: false });
 
-      return data.map((o: any) => {
-        let adminStatus = mapDbStatusToAdminStatus(o.status);
-        if (adminStatus === 'pending_payment' && o.created_at) {
-          const elapsed = Date.now() - new Date(o.created_at).getTime();
-          if (elapsed >= 20 * 60 * 1000) {
-            adminStatus = 'cancelled';
-          }
-        }
-        const isPaid = adminStatus === 'processing' || adminStatus === 'packing' || 
-                       adminStatus === 'shipped' || adminStatus === 'delivered';
-        const items = (o.order_items || []).map((it: any) => ({
-          productId: String(it.product_id || it.id),
-          sku: `UB-${String(it.product_id || 1).padStart(4, '0')}`,
-          name: it.product_name || 'Produk Busana',
-          price: Number(it.price) || 0,
-          quantity: Number(it.quantity) || 1,
-          imageUrl: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=200'
-        }));
+    if (error || !data) return [];
 
-        const total = Number(o.total_amount) || 0;
-        const shippingCost = Number(o.shipping_cost) || 15000;
-        const discount = Number(o.discount_amount) || 0;
+    const statusMap: Record<string, OrderStatus> = {
+      'Menunggu Pembayaran': 'pending_payment',
+      'Sedang Diproses': 'processing',
+      'Dikemas Gudang': 'packing',
+      'Dikirim': 'shipped',
+      'Selesai': 'delivered',
+      'Dibatalkan': 'cancelled',
+      pending_payment: 'pending_payment',
+      processing: 'processing',
+      packing: 'packing',
+      shipped: 'shipped',
+      delivered: 'delivered',
+      cancelled: 'cancelled',
+    };
 
-        return {
-          id: String(o.id),
-          orderNumber: o.order_number,
-          customerName: o.customer_name || 'Pelanggan UrbanStyle',
-          customerPhone: o.customer_phone || '-',
-          customerEmail: o.customer_email || 'customer@urbanstyle.com',
-          shippingAddress: o.customer_address || 'Jl. Jend. Sudirman, Jakarta',
-          city: 'DKI Jakarta',
-          courier: (o.shipping_courier as any) || 'JNE Reguler',
-          trackingNumber: o.tracking_number || undefined,
-          paymentMethod: (o.payment_method as any) || 'QRIS',
-          paymentStatus: isPaid ? 'paid' : (adminStatus === 'cancelled' ? 'refunded' : 'unpaid'),
-          items,
-          subtotal: Math.max(0, total - shippingCost + discount),
-          shippingCost,
-          discount,
-          total,
-          status: adminStatus,
-          createdAt: o.created_at ? new Date(o.created_at).toLocaleDateString('id-ID', {
-            day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
-          }) : '14 Okt 2026'
-        };
-      });
-    } catch {
-      return null;
-    }
+    return data.map((o) => {
+      const shippingAddr = o.shipping_address || '';
+      const addrParts = shippingAddr.split(',').map((s: string) => s.trim()).filter(Boolean);
+      const city = addrParts.length > 1 ? addrParts[addrParts.length - 1] : 'Jakarta';
+
+      return {
+        id: String(o.id),
+        orderNumber: o.order_number,
+        createdAt: formatDateShort(o.created_at),
+        rawCreatedAt: o.created_at,
+        customerName: o.customer_name || 'Pelanggan UrbanStyle',
+        customerPhone: o.customer_phone || '-',
+        customerEmail: o.customer_email || '',
+        shippingAddress: shippingAddr,
+        city,
+        courier: o.courier || 'JNE Reguler',
+        trackingNumber: o.tracking_number || undefined,
+        paymentMethod: o.payment_method || 'QRIS',
+        paymentStatus:
+          o.payment_status === 'paid' ||
+          ['Sedang Diproses', 'Dikemas Gudang', 'Dikirim', 'Selesai'].includes(o.status)
+            ? 'paid'
+            : 'pending',
+        status: statusMap[o.status] || 'processing',
+        items: (o.order_items || []).map((item: {
+          product_id: number | string;
+          sku?: string;
+          product_name: string;
+          price: number;
+          quantity: number;
+          image_url?: string;
+        }) => ({
+          productId: String(item.product_id),
+          sku: item.sku || `SKU-${item.product_id}`,
+          name: item.product_name,
+          price: Number(item.price),
+          quantity: Number(item.quantity),
+          imageUrl: item.image_url || 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=800&q=85',
+        })),
+        subtotal: Number(o.subtotal || 0),
+        shippingCost: Number(o.shipping_cost || 0),
+        discount: Number(o.discount_amount || 0),
+        total: Number(o.total_amount || 0),
+      };
+    });
   },
 
-  // 3. Staf & Karyawan
-  async getEmployees(): Promise<Employee[] | null> {
-    if (!isSupabaseConfigured || !supabase) return null;
-    try {
-      const { data, error } = await supabase.from('staff_users').select('*').order('created_at', { ascending: true });
-      if (error || !data) return null;
+  async getEmployees(): Promise<Employee[]> {
+    const db = await getDb();
+    const { data, error } = await db.from('staff_users').select('*').order('id', { ascending: true });
+    if (error || !data) return [];
 
-      return data.map(s => {
-        const role = s.role === 'owner' ? 'superadmin' : s.role === 'gudang' ? 'warehouse_admin' : 'store_admin';
-        return {
-          id: s.id,
-          name: s.name,
-          email: s.email,
-          phone: s.phone || '-',
-          role,
-          roleLabel: role === 'superadmin' ? 'Superadmin / Owner' : role === 'warehouse_admin' ? 'Warehouse Admin' : 'Store Admin',
-          department: s.department || 'Operasional Toko',
-          branch: s.branch || 'DC-1 Cikarang',
-          status: s.is_active ? 'active' : 'inactive',
-          salary: Number(s.salary) || 6000000,
-          lastLogin: s.last_login ? new Date(s.last_login).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : 'Hari ini',
-          avatarUrl: s.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'
-        };
-      });
-    } catch {
-      return null;
-    }
+    return data.map((s) => {
+      const normalizedStatus: Employee['status'] =
+        s.status === 'leave'
+          ? 'leave'
+          : s.is_active === false || s.status === 'inactive'
+            ? 'inactive'
+            : 'active';
+
+      return {
+        id: String(s.id),
+        name: s.name || s.full_name || 'Staf',
+        email: s.email,
+        phone: s.phone || '+62 812-0000-0000',
+        role: mapRole(s.role),
+        roleLabel: s.role_label || (s.role === 'owner' ? 'Owner & Direksi' : 'Staf Operasional'),
+        department: s.department || 'Operasional',
+        branch: s.branch || 'Jakarta Pusat',
+        status: normalizedStatus,
+        lastLogin: formatDateTimeShort(s.last_login || s.updated_at || s.created_at),
+        avatarUrl: s.avatar_url || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=200&q=80',
+        salary: Number(s.salary || 5500000),
+      };
+    });
   },
 
-  // 4. Promo & Kupon
-  async getPromos(): Promise<PromoVoucher[] | null> {
-    if (!isSupabaseConfigured || !supabase) return null;
-    try {
-      const { data, error } = await supabase.from('coupons').select('*').order('id', { ascending: true });
-      if (error || !data) return null;
+  async getInboundShipments(): Promise<InboundShipment[]> {
+    const db = await getDb();
+    const { data, error } = await db.from('inbound_shipments').select('*').order('created_at', { ascending: false });
+    if (error || !data) return [];
 
-      return data.map(c => ({
+    return data.map((i) => ({
+      id: String(i.id),
+      poNumber: i.po_number,
+      supplierName: i.supplier_name,
+      expectedDate: i.expected_date || formatDateShort(i.created_at),
+      status: (i.status as InboundShipment['status']) || 'pending',
+      totalItems: Number(i.total_items || 1),
+      totalUnits: Number(i.total_units || 0),
+      itemsSummary: i.items_summary || '-',
+    }));
+  },
+
+  async getExpenses(): Promise<ExpenseItem[]> {
+    const db = await getDb();
+    const { data, error } = await db.from('expenses').select('*').order('created_at', { ascending: false });
+    if (error || !data) return [];
+
+    return data.map((e) => ({
+      id: String(e.id),
+      date: formatDateShort(e.date || e.created_at),
+      rawDate: e.created_at || e.date,
+      category: e.category as ExpenseItem['category'],
+      description: e.description,
+      amount: Number(e.amount),
+      approvedBy: e.approved_by || 'Owner Store (Superadmin)',
+    }));
+  },
+
+  async getActivityLogs(): Promise<ActivityLog[]> {
+    const db = await getDb();
+    const { data, error } = await db
+      .from('activity_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (error || !data) return [];
+
+    return data.map((l) => ({
+      id: String(l.id),
+      timestamp: formatDateTimeShort(l.created_at),
+      userName: l.user_name,
+      userRole: mapRole(l.user_role),
+      action: l.action,
+      target: l.target,
+      type: (l.type as ActivityLog['type']) || 'system',
+    }));
+  },
+
+  async getStockAdjustments(): Promise<StockAdjustment[]> {
+    const db = await getDb();
+    const { data, error } = await db
+      .from('stock_adjustments')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (error || !data) return [];
+
+    return data.map((a) => ({
+      id: String(a.id),
+      date: formatDateTimeShort(a.created_at),
+      rawDate: a.created_at,
+      productSku: a.product_sku,
+      productName: a.product_name,
+      prevStock: Number(a.prev_stock),
+      newStock: Number(a.new_stock),
+      diff: Number(a.diff),
+      reason: a.reason as StockAdjustment['reason'],
+      adjustedBy: a.adjusted_by,
+    }));
+  },
+
+  async getPromos(): Promise<PromoVoucher[]> {
+    const db = await getDb();
+    const { data, error } = await db.from('coupons').select('*').order('id', { ascending: true });
+    if (error || !data) return [];
+
+    return data.map((c) => {
+      const normalizedType = c.discount_type === 'fixed' ? 'fixed' : 'percentage';
+      return {
         id: String(c.id),
         code: c.code,
-        discountType: c.type === 'percent' || c.type === 'percentage' ? 'percentage' : 'fixed',
-        discountValue: Number(c.discount_amount),
-        minPurchase: Number(c.min_purchase) || 0,
-        usageCount: Number(c.used_count) || 0,
-        quota: Number(c.usage_limit) || 100,
-        validUntil: c.valid_until ? new Date(c.valid_until).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '31 Des 2026',
-        status: c.is_active ? 'active' : 'expired'
-      }));
-    } catch {
-      return null;
-    }
+        discountType: normalizedType,
+        discountValue: Number(c.discount_value),
+        minPurchase: Number(c.min_purchase || 0),
+        usageCount: Number(c.used_count || 0),
+        quota: Number(c.usage_limit || 100),
+        validUntil: c.expires_at ? new Date(c.expires_at).toISOString().split('T')[0] : '2027-12-31',
+        status: c.is_active ? 'active' : 'expired',
+      };
+    });
   },
 
-  // 5. Inbound Shipments
-  async getInbound(): Promise<InboundShipment[] | null> {
-    if (!isSupabaseConfigured || !supabase) return null;
-    try {
-      const { data, error } = await supabase.from('admin_inbound_shipments').select('*').order('created_at', { ascending: false });
-      if (error || !data) return null;
-      return data.map(d => ({
-        id: d.id,
-        poNumber: d.po_number,
-        supplierName: d.supplier_name,
-        itemCount: d.item_count,
-        totalUnits: d.total_units,
-        expectedDate: d.expected_date,
-        status: d.status,
-        itemsSummary: d.items_summary,
-        destinationWarehouse: d.destination_warehouse
-      }));
-    } catch {
-      return null;
-    }
+  async getReviews(): Promise<AdminCustomerReview[]> {
+    const db = await getDb();
+    const { data, error } = await db
+      .from('reviews')
+      .select('id, product_id, user_name, rating, comment, created_at, products (name)')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error || !data) return [];
+
+    return data.map((r) => {
+      const prodRel = r.products as { name?: string } | Array<{ name?: string }> | null;
+      const prodName = Array.isArray(prodRel) ? prodRel[0]?.name : prodRel?.name;
+      return {
+        id: String(r.id),
+        productId: String(r.product_id),
+        productName: prodName || `Produk #${r.product_id}`,
+        customerName: r.user_name || 'Pelanggan',
+        rating: Number(r.rating || 5),
+        comment: r.comment || '',
+        createdAt: formatDateShort(r.created_at),
+      };
+    });
   },
 
-  // 6. Expenses
-  async getExpenses(): Promise<ExpenseItem[] | null> {
-    if (!isSupabaseConfigured || !supabase) return null;
-    try {
-      const { data, error } = await supabase.from('admin_expenses').select('*').order('created_at', { ascending: false });
-      if (error || !data) return null;
-      return data.map(e => ({
-        id: e.id,
-        category: e.category,
-        description: e.description,
-        amount: Number(e.amount),
-        date: e.date,
-        approvedBy: e.approved_by,
-        status: e.status
-      }));
-    } catch {
-      return null;
-    }
-  },
+  async getSettings(): Promise<StoreSettings> {
+    const db = await getDb();
+    const { data, error } = await db
+      .from('store_settings')
+      .select('value')
+      .eq('key', 'finance_tax_config')
+      .maybeSingle();
 
-  // 7. Stock Adjustments
-  async getStockAdjustments(): Promise<StockAdjustment[] | null> {
-    if (!isSupabaseConfigured || !supabase) return null;
-    try {
-      const { data, error } = await supabase.from('admin_stock_adjustments').select('*').order('created_at', { ascending: false });
-      if (error || !data) return null;
-      return data.map(a => ({
-        id: a.id,
-        sku: a.sku,
-        productName: a.product_name,
-        previousStock: a.previous_stock,
-        adjustedStock: a.adjusted_stock,
-        diff: a.diff,
-        reason: a.reason,
-        date: a.date,
-        adjustedBy: a.adjusted_by
-      }));
-    } catch {
-      return null;
+    if (error || !data?.value || typeof data.value !== 'object') {
+      return { ppnRate: 11, approvalLimit: 10000000 };
     }
-  },
 
-  // 8. Activity Logs
-  async getActivityLogs(): Promise<ActivityLog[] | null> {
-    if (!isSupabaseConfigured || !supabase) return null;
-    try {
-      const { data, error } = await supabase.from('admin_activity_logs').select('*').order('created_at', { ascending: false });
-      if (error || !data) return null;
-      return data.map(l => ({
-        id: l.id,
-        timestamp: l.timestamp,
-        userName: l.user_name,
-        userRole: l.user_role,
-        action: l.action,
-        details: l.details,
-        category: l.category
-      }));
-    } catch {
-      return null;
-    }
-  }
+    const val = data.value as { ppnRate?: unknown; approvalLimit?: unknown };
+    const ppnRate = Number(val.ppnRate);
+    const approvalLimit = Number(val.approvalLimit);
+    return {
+      ppnRate: Number.isFinite(ppnRate) && ppnRate >= 0 && ppnRate <= 100 ? ppnRate : 11,
+      approvalLimit: Number.isFinite(approvalLimit) && approvalLimit >= 0 ? approvalLimit : 10000000,
+    };
+  },
 };

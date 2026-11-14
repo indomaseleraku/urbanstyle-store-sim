@@ -11,19 +11,30 @@ import { MapPin, Plus, Trash2 } from 'lucide-react';
 import AddAddressForm from '@/components/account/AddAddressForm';
 
 export default function AddressBookPage() {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const [addresses, setAddresses] = useState<UserAddress[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
+    if (authLoading) return;
+    let active = true;
     async function loadAddresses() {
       if (user) {
         const list = await dataStore.getUserAddresses(user.id);
-        setAddresses(list);
+        if (active) setAddresses(list);
+      } else if (active) {
+        setAddresses([]);
       }
+      if (active) setIsLoading(false);
     }
     loadAddresses();
-  }, [user]);
+    return () => {
+      active = false;
+    };
+  }, [user, authLoading]);
 
   const handleAddAddress = async (data: {
     label: string;
@@ -35,35 +46,48 @@ export default function AddressBookPage() {
     isDefault: boolean;
   }) => {
     if (!user) return;
+    setErrorMsg('');
+    try {
+      await dataStore.addUserAddress({
+        user_id: user.id,
+        label: data.label,
+        recipient_name: data.recipientName,
+        phone: data.phone,
+        address_line: data.addressLine,
+        city: data.city,
+        postal_code: data.postalCode,
+        is_default: data.isDefault,
+      });
 
-    await dataStore.addUserAddress({
-      user_id: user.id,
-      label: data.label,
-      recipient_name: data.recipientName,
-      phone: data.phone,
-      address_line: data.addressLine,
-      city: data.city,
-      postal_code: data.postalCode,
-      is_default: data.isDefault,
-    });
-
-    const updated = await dataStore.getUserAddresses(user.id);
-    setAddresses(updated);
-    setIsAdding(false);
+      const updated = await dataStore.getUserAddresses(user.id);
+      setAddresses(updated);
+      setIsAdding(false);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Gagal menambah alamat baru.');
+    }
   };
 
   const handleDelete = async (id: string) => {
     if (!user) return;
-    if (confirm('Yakin ingin menghapus alamat ini?')) {
-      await dataStore.deleteUserAddress(id);
-      const updated = await dataStore.getUserAddresses(user.id);
-      setAddresses(updated);
+    setErrorMsg('');
+    const ok = await dataStore.deleteUserAddress(id);
+    if (!ok) {
+      setErrorMsg('Gagal menghapus alamat. Silakan coba lagi.');
+      return;
     }
+    const updated = await dataStore.getUserAddresses(user.id);
+    setAddresses(updated);
+    setConfirmDeleteId(null);
   };
 
   const handleSetDefault = async (id: string) => {
     if (!user) return;
-    await dataStore.setDefaultAddress(user.id, id);
+    setErrorMsg('');
+    const ok = await dataStore.setDefaultAddress(user.id, id);
+    if (!ok) {
+      setErrorMsg('Gagal mengatur alamat utama.');
+      return;
+    }
     const updated = await dataStore.getUserAddresses(user.id);
     setAddresses(updated);
   };
@@ -103,9 +127,20 @@ export default function AddressBookPage() {
         />
       )}
 
+      {/* Error Banner */}
+      {errorMsg && (
+        <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold">
+          {errorMsg}
+        </div>
+      )}
+
       {/* Daftar Alamat Tersimpan */}
       <div className="space-y-4">
-        {addresses.length === 0 ? (
+        {isLoading ? (
+          <div className="p-8 text-center border border-zinc-200 text-zinc-400 text-xs">
+            Memuat daftar alamat tersimpan...
+          </div>
+        ) : addresses.length === 0 ? (
           <div className="p-8 text-center border border-dashed border-zinc-300 text-zinc-500 text-xs">
             Belum ada alamat pengiriman tersimpan. Tambahkan alamat pertama Anda untuk mempercepat checkout.
           </div>
@@ -146,14 +181,33 @@ export default function AddressBookPage() {
                       Pilih Utama
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(addr.id)}
-                    className="p-1 text-zinc-400 hover:text-red-600 transition-colors cursor-pointer"
-                    title="Hapus alamat"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  {confirmDeleteId === addr.id ? (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(addr.id)}
+                        className="text-[10px] font-bold uppercase tracking-wider bg-[#E60012] text-white px-2 py-1 cursor-pointer"
+                      >
+                        Hapus
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="text-[10px] font-bold uppercase tracking-wider text-zinc-600 border border-zinc-300 px-2 py-1 cursor-pointer"
+                      >
+                        Batal
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(addr.id)}
+                      className="p-1 text-zinc-400 hover:text-red-600 transition-colors cursor-pointer"
+                      title="Hapus alamat"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

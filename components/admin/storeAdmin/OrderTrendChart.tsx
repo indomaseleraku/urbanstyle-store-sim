@@ -19,12 +19,16 @@ export const OrderTrendChart: React.FC = () => {
   const [metricView, setMetricView] = useState<'both' | 'orders' | 'revenue'>('both');
 
   const chartData = useMemo<DayData[]>(() => {
-    return generateOrderTrendData(orders.length);
-  }, [orders.length]);
+    return generateOrderTrendData(orders);
+  }, [orders]);
 
   const total30dOrders = useMemo(() => chartData.reduce((acc, c) => acc + c.orders, 0), [chartData]);
   const total30dRevenue = useMemo(() => chartData.reduce((acc, c) => acc + c.revenue, 0), [chartData]);
-  const avgDailyOrders = Math.round(total30dOrders / chartData.length);
+  const prev15Orders = useMemo(() => chartData.slice(0, 15).reduce((acc, c) => acc + c.orders, 0), [chartData]);
+  const recent15Orders = useMemo(() => chartData.slice(15).reduce((acc, c) => acc + c.orders, 0), [chartData]);
+  const trendDeltaPct =
+    prev15Orders > 0 ? Math.round(((recent15Orders - prev15Orders) / prev15Orders) * 100) : null;
+  const avgDailyOrders = Number((total30dOrders / chartData.length).toFixed(1));
   const peakDay = useMemo(() => {
     return chartData.reduce((max, c) => (c.orders > max.orders ? c : max), chartData[0]);
   }, [chartData]);
@@ -39,10 +43,10 @@ export const OrderTrendChart: React.FC = () => {
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-1.5">
             <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-              {data.date} 2026
+              {data.fullDate}
             </span>
             <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded">
-              {data.completed} Selesai
+              {data.completed} Lunas
             </span>
           </div>
 
@@ -84,7 +88,7 @@ export const OrderTrendChart: React.FC = () => {
             </h2>
           </div>
           <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Dinamika transaksi webstore & marketplace (14 Sep - 14 Okt 2026)
+            Dinamika transaksi harian aktual 30 hari terakhir dari database Supabase
           </p>
         </div>
 
@@ -203,6 +207,7 @@ export const OrderTrendChart: React.FC = () => {
         avgDailyOrders={avgDailyOrders}
         peakDay={peakDay}
         total30dRevenue={total30dRevenue}
+        trendDeltaPct={trendDeltaPct}
       />
     </div>
   );

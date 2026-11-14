@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAdminSuite } from '@/lib/admin-suite/AdminSuiteContext';
 import { Product } from '@/lib/admin-suite/types';
+import { X } from 'lucide-react';
 
 interface ProductCatalogEditModalProps {
   editingProduct: Product | null;
@@ -12,25 +13,30 @@ export const ProductCatalogEditModal: React.FC<ProductCatalogEditModalProps> = (
   setEditingProduct,
 }) => {
   const { updateProduct } = useAdminSuite();
+  const [isSaving, setIsSaving] = useState(false);
 
   if (!editingProduct) return null;
 
-  const handleEditSubmit = (e: React.FormEvent) => {
+  const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingProduct) return;
+    if (!editingProduct || !editingProduct.name.trim()) return;
 
-    updateProduct(editingProduct.id, {
-      name: editingProduct.name,
-      price: Number(editingProduct.price),
-      originalPrice: editingProduct.originalPrice ? Number(editingProduct.originalPrice) : undefined,
-      category: editingProduct.category,
-      stock: Number(editingProduct.stock),
-      safetyStock: Number(editingProduct.safetyStock),
-      description: editingProduct.description,
-      status: editingProduct.status,
-    });
-
-    setEditingProduct(null);
+    setIsSaving(true);
+    try {
+      await updateProduct(editingProduct.id, {
+        name: editingProduct.name.trim(),
+        price: Math.max(0, Number(editingProduct.price) || 0),
+        originalPrice: editingProduct.originalPrice ? Math.max(0, Number(editingProduct.originalPrice)) : undefined,
+        category: editingProduct.category,
+        stock: Math.max(0, Math.floor(Number(editingProduct.stock) || 0)),
+        safetyStock: Math.max(0, Math.floor(Number(editingProduct.safetyStock) || 0)),
+        description: editingProduct.description,
+        status: editingProduct.status,
+      });
+      setEditingProduct(null);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -42,9 +48,10 @@ export const ProductCatalogEditModal: React.FC<ProductCatalogEditModalProps> = (
           </h3>
           <button
             onClick={() => setEditingProduct(null)}
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-xs"
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer"
+            aria-label="Tutup"
           >
-            ✕
+            <X className="w-4 h-4" />
           </button>
         </div>
 
@@ -53,6 +60,7 @@ export const ProductCatalogEditModal: React.FC<ProductCatalogEditModalProps> = (
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Nama Produk</label>
             <input
               type="text"
+              required
               value={editingProduct.name}
               onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
               className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-800 dark:text-white"
@@ -64,8 +72,10 @@ export const ProductCatalogEditModal: React.FC<ProductCatalogEditModalProps> = (
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Harga Jual (Rp)</label>
               <input
                 type="number"
+                required
+                min="0"
                 value={editingProduct.price}
-                onChange={(e) => setEditingProduct({ ...editingProduct, price: Number(e.target.value) })}
+                onChange={(e) => setEditingProduct({ ...editingProduct, price: Math.max(0, Number(e.target.value) || 0) })}
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-800 dark:text-white font-mono"
               />
             </div>
@@ -73,8 +83,10 @@ export const ProductCatalogEditModal: React.FC<ProductCatalogEditModalProps> = (
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Stok Etalase</label>
               <input
                 type="number"
+                required
+                min="0"
                 value={editingProduct.stock}
-                onChange={(e) => setEditingProduct({ ...editingProduct, stock: Number(e.target.value) })}
+                onChange={(e) => setEditingProduct({ ...editingProduct, stock: Math.max(0, Number(e.target.value) || 0) })}
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-800 dark:text-white font-mono"
               />
             </div>
@@ -97,15 +109,16 @@ export const ProductCatalogEditModal: React.FC<ProductCatalogEditModalProps> = (
             <button
               type="button"
               onClick={() => setEditingProduct(null)}
-              className="px-3 py-1.5 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg font-medium"
+              className="px-3 py-1.5 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg font-medium cursor-pointer"
             >
               Batal
             </button>
             <button
               type="submit"
-              className="px-4 py-1.5 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white font-semibold rounded-lg shadow-sm border border-slate-800 dark:border-slate-700"
+              disabled={isSaving}
+              className="px-4 py-1.5 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-60 text-white font-semibold rounded-lg shadow-sm border border-slate-800 dark:border-slate-700 cursor-pointer"
             >
-              Simpan Perubahan
+              {isSaving ? 'Menyimpan...' : 'Simpan Perubahan'}
             </button>
           </div>
         </form>

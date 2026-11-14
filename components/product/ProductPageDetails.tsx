@@ -56,13 +56,13 @@ export const ProductPageDetails: React.FC<ProductPageDetailsProps> = ({
               <Star
                 key={i}
                 size={14}
-                fill={i < Math.floor(product.rating || 5) ? 'currentColor' : 'none'}
-                className={i < Math.floor(product.rating || 5) ? '' : 'text-zinc-300'}
+                fill={i < Math.round(product.rating || 0) ? 'currentColor' : 'none'}
+                className={i < Math.round(product.rating || 0) ? '' : 'text-zinc-300'}
               />
             ))}
           </div>
-          <span className="text-xs font-bold font-mono text-zinc-800">{product.rating || 4.8}</span>
-          <span className="text-xs text-zinc-400 font-mono">({product.reviews_count || 12} Ulasan)</span>
+          <span className="text-xs font-bold font-mono text-zinc-800">{Number(product.rating || 0).toFixed(1)}</span>
+          <span className="text-xs text-zinc-400 font-mono">({product.reviews_count ?? 0} Ulasan)</span>
         </div>
       </div>
 

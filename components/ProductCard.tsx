@@ -49,6 +49,13 @@ export default function ProductCard({
 
   const hasDiscount = Boolean(product.original_price && product.original_price > product.price);
 
+  const handleImgError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    if (img.dataset.fallbackApplied === '1') return;
+    img.dataset.fallbackApplied = '1';
+    img.src = 'https://images.unsplash.com/photo-1523381210434-271e8be1f52b?auto=format&fit=crop&w=450&q=75';
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -62,12 +69,14 @@ export default function ProductCard({
           <img
             src={getOptimizedImageUrl(currentColor.image_url, 450, 75)}
             alt={product.name}
+            onError={handleImgError}
             className="w-full h-full object-cover object-center transition-opacity duration-500 ease-out group-hover:opacity-0"
             loading="lazy"
           />
           <img
             src={getOptimizedImageUrl(secondaryImage, 450, 75)}
             alt={`${product.name} alternate view`}
+            onError={handleImgError}
             className="w-full h-full object-cover object-center absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 ease-out"
             loading="lazy"
           />
@@ -193,10 +202,10 @@ export default function ProductCard({
         <div className="flex items-center gap-1 text-[11px] text-zinc-400 pt-0.5">
           <Star size={10} className="fill-amber-400 text-amber-400 shrink-0" />
           <span className="font-medium text-zinc-700 font-mono tabular-nums">
-            {(product.rating || 4.8).toFixed(1)}
+            {Number(product.rating || 0).toFixed(1)}
           </span>
           <span className="text-zinc-400 font-mono tabular-nums">
-            ({product.reviews_count || 12})
+            ({product.reviews_count ?? 0})
           </span>
         </div>
       </div>

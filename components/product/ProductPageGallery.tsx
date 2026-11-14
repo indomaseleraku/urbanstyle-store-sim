@@ -26,12 +26,20 @@ export const ProductPageGallery: React.FC<ProductPageGalleryProps> = ({
   onToggleWishlist,
   hasDiscount,
 }) => {
+  const handleImgError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    if (img.dataset.fallbackApplied === '1') return;
+    img.dataset.fallbackApplied = '1';
+    img.src = 'https://images.unsplash.com/photo-1523381210434-271e8be1f52b?auto=format&fit=crop&w=900&q=80';
+  };
+
   return (
     <div className="lg:col-span-7 space-y-4">
       <div className="relative aspect-[3/4] bg-[#F6F6F6] border border-zinc-200 overflow-hidden rounded-none">
         <img
           src={getOptimizedImageUrl(mainDisplayImage, 900, 80)}
           alt={product.name}
+          onError={handleImgError}
           className="w-full h-full object-cover object-center"
         />
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { UserAddress, BANK_ACCOUNTS, Order } from '@/lib/types';
 import { useAuth } from '@/lib/auth-context';
 import { dataStore } from '@/lib/store';
@@ -54,13 +54,43 @@ export function useCheckoutForm({
   const [couponMsg, setCouponMsg] = useState<{ text: string; isError: boolean } | null>(null);
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
 
-  // Auto pre-fill from user profile and address book
+  const prevUserIdRef = useRef<string | null>(user?.id || null);
+
+  // Auto pre-fill from user profile and address book, and reset transient state when closed or user changes
   useEffect(() => {
-    if (user && isOpen) {
+    const currentUid = user?.id || null;
+    if (prevUserIdRef.current !== currentUid) {
+      prevUserIdRef.current = currentUid;
+      setName('');
+      setPhone('');
+      setAddress('');
+      setSelectedAddressId('');
+      setSavedAddresses([]);
+      setCreatedOrder(null);
+      setAppliedCoupon(null);
+      setDiscountAmount(0);
+      setCouponCode('');
+      setCouponMsg(null);
+      setErrorMsg('');
+    }
+
+    if (!isOpen) {
+      setCreatedOrder(null);
+      setAppliedCoupon(null);
+      setDiscountAmount(0);
+      setCouponCode('');
+      setCouponMsg(null);
+      setErrorMsg('');
+      return;
+    }
+
+    let cancelled = false;
+    if (user) {
       if (!name) setName(user.full_name || '');
       if (!phone) setPhone(user.phone || '');
 
       dataStore.getUserAddresses(user.id).then((addrs) => {
+        if (cancelled) return;
         setSavedAddresses(addrs);
         const def = addrs.find((a) => a.is_default) || addrs[0];
         if (def) {
@@ -72,8 +102,40 @@ export function useCheckoutForm({
           if (def.recipient_name && !name) setName(def.recipient_name);
         }
       });
+    } else {
+      setSavedAddresses([]);
     }
+    return () => {
+      cancelled = true;
+    };
   }, [user, isOpen]);
+
+  // Re-validate applied coupon cleanly if subtotal changes
+  useEffect(() => {
+    if (!isOpen || !appliedCoupon) return;
+    let active = true;
+    fetch('/api/coupons/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: appliedCoupon, subtotal }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!active) return;
+        if (data.valid) {
+          setDiscountAmount(data.discount_amount);
+          setCouponMsg({ text: data.message, isError: false });
+        } else {
+          setAppliedCoupon(null);
+          setDiscountAmount(0);
+          setCouponMsg({ text: data.message || 'Kupon tidak lagi memenuhi syarat.', isError: true });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [subtotal, isOpen, appliedCoupon]);
 
   const handleApplyCoupon = async (codeToApply?: string) => {
     const code = (codeToApply || couponCode).toUpperCase().trim();

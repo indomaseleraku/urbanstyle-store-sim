@@ -15,7 +15,7 @@ import { StockTrendHighlights } from './StockTrendHighlights';
 import { generateStockTrendData, StockDayData } from './stockChartHelper';
 
 export const StockTrendChart: React.FC = () => {
-  const { products, theme } = useAdminSuite();
+  const { products, inboundShipments, orders, stockAdjustments, theme } = useAdminSuite();
   const [filterMode, setFilterMode] = useState<'all' | 'level' | 'flow'>('all');
 
   const currentTotalStock = useMemo(() => {
@@ -23,8 +23,8 @@ export const StockTrendChart: React.FC = () => {
   }, [products]);
 
   const chartData = useMemo<StockDayData[]>(() => {
-    return generateStockTrendData(currentTotalStock);
-  }, [currentTotalStock]);
+    return generateStockTrendData(currentTotalStock, inboundShipments, orders, stockAdjustments);
+  }, [currentTotalStock, inboundShipments, orders, stockAdjustments]);
 
   const totalInbound30d = useMemo(() => chartData.reduce((acc, c) => acc + c.inbound, 0), [chartData]);
   const totalOutbound30d = useMemo(() => chartData.reduce((acc, c) => acc + c.outbound, 0), [chartData]);
@@ -42,7 +42,7 @@ export const StockTrendChart: React.FC = () => {
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-1.5">
             <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-              {data.date} 2026
+              {data.fullDate}
             </span>
             <span className="text-[10px] font-mono text-blue-600 dark:text-blue-400 font-semibold bg-blue-50 dark:bg-blue-950/60 px-1.5 py-0.5 rounded">
               DC-1 Cikarang
@@ -97,7 +97,7 @@ export const StockTrendChart: React.FC = () => {
             </h2>
           </div>
           <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Pusat Distribusi UrbanStyle DC-1 Cikarang (15 Sep - 14 Okt 2026)
+            Pusat Distribusi UrbanStyle DC-1 Cikarang (Arus Aktual 30 Hari Terakhir)
           </p>
         </div>
 

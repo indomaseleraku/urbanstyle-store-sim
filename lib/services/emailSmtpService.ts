@@ -1,12 +1,11 @@
 // lib/services/emailSmtpService.ts
-// Layanan Pengiriman Email via Gmail SMTP dengan Mode Native Gmail (<div dir="ltr">) Anti-Spam
+// Layanan Pengiriman Email via Gmail SMTP dengan HTML escaping aman
 
 import nodemailer from 'nodemailer';
+import { escapeHtml } from './sessionServerHelper';
 
 const SMTP_USER = process.env.GMAIL_SMTP_USER || '';
 const SMTP_PASS = (process.env.GMAIL_SMTP_APP_PASSWORD || '').replace(/\s+/g, '');
-
-// Nama pengirim resmi yang sudah sinkron dengan profil akun Google
 const SENDER_DISPLAY = process.env.GMAIL_SENDER_NAME || 'UrbanStyle LifeWear';
 
 function createTransporter() {
@@ -30,14 +29,18 @@ export async function sendOtpEmail(
   purpose: 'login' | 'register' | 'reset' = 'login'
 ): Promise<{ sent: boolean; messageId?: string; error?: string }> {
   const cleanTo = toEmail.trim().toLowerCase();
+  const safeOtp = escapeHtml(otpCode);
   const actionLabel =
-    purpose === 'register' ? 'pendaftaran akun' : purpose === 'reset' ? 'reset kata sandi' : 'masuk akun';
+    purpose === 'register'
+      ? 'pendaftaran akun'
+      : purpose === 'reset'
+      ? 'reset kata sandi'
+      : 'masuk akun';
 
-  // Struktur <div dir="ltr"> identik dengan email ketikan asli Gmail Web agar lolos filter Spam
   const html = `<div dir="ltr" style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #222222; line-height: 1.6;">
   <p>Halo,</p>
   <p>Berikut adalah 6 angka kode untuk ${actionLabel} Anda di UrbanStyle:</p>
-  <p style="font-size: 22px; font-weight: bold; letter-spacing: 4px; margin: 16px 0; color: #111111;">${otpCode}</p>
+  <p style="font-size: 22px; font-weight: bold; letter-spacing: 4px; margin: 16px 0; color: #111111;">${safeOtp}</p>
   <p>Silakan masukkan kode tersebut pada halaman aplikasi (berlaku selama 5 menit).</p>
   <p>Terima kasih,<br>UrbanStyle LifeWear</p>
 </div>`;
@@ -79,16 +82,22 @@ export async function sendOrderNotificationEmail(
   const cleanTo = payload.toEmail.trim().toLowerCase();
   const formattedTotal = `Rp ${Number(payload.totalAmount || 0).toLocaleString('id-ID')}`;
 
+  const safeName = escapeHtml(payload.customerName);
+  const safeOrderNo = escapeHtml(payload.orderNumber);
+  const safeItems = escapeHtml(payload.itemsSummary);
+  const safeMethod = escapeHtml(payload.paymentMethod);
+  const safeAddr = payload.shippingAddress ? escapeHtml(payload.shippingAddress) : '';
+
   const html = `<div dir="ltr" style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #222222; line-height: 1.6;">
-  <p>Halo ${payload.customerName},</p>
+  <p>Halo ${safeName},</p>
   <p>Pembayaran pesanan Anda telah <b>berhasil kami terima (LUNAS)</b>. Berikut adalah ringkasan faktur transaksi resmi Anda:</p>
   <p>
-    Nomor Pesanan: <b>${payload.orderNumber}</b><br>
+    Nomor Pesanan: <b>${safeOrderNo}</b><br>
     Status Pembayaran: <b style="color: #16a34a;">LUNAS</b><br>
-    Item: ${payload.itemsSummary}<br>
-    Metode Pembayaran: ${payload.paymentMethod}<br>
+    Item: ${safeItems}<br>
+    Metode Pembayaran: ${safeMethod}<br>
     Total: <b>${formattedTotal}</b>
-    ${payload.shippingAddress ? `<br>Alamat Tujuan: ${payload.shippingAddress}` : ''}
+    ${safeAddr ? `<br>Alamat Tujuan: ${safeAddr}` : ''}
   </p>
   <p>Pesanan Anda saat ini sedang dikemas oleh tim logistik kami.</p>
   <p>Salam,<br>UrbanStyle LifeWear</p>

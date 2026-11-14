@@ -55,7 +55,7 @@ export default function AccountLayout({
                 className="hidden sm:flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider bg-red-50 text-[#E60012] px-2.5 py-1 border border-red-200 hover:bg-[#E60012] hover:text-white transition-colors"
               >
                 <Shield size={13} />
-                <span>Dasbor SIM</span>
+                <span>Dasbor Admin</span>
               </Link>
             )}
             <button

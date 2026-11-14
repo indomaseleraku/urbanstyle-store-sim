@@ -8,25 +8,27 @@ import { OrderManagementCards } from './OrderManagementCards';
 import { getOrderStatusBadge } from './orderStatusBadge';
 
 export const OrderManagement: React.FC = () => {
-  const { orders } = useAdminSuite();
+  const { orders, globalSearch } = useAdminSuite();
 
   const [statusFilter, setStatusFilter] = useState<'all' | OrderStatus>('processing');
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
 
+  const query = (search || globalSearch).trim().toLowerCase();
+
   const filteredOrders = orders.filter((o) => {
     const matchesStatus = statusFilter === 'all' || o.status === statusFilter;
     const matchesSearch =
-      o.orderNumber.toLowerCase().includes(search.toLowerCase()) ||
-      o.customerName.toLowerCase().includes(search.toLowerCase()) ||
-      o.city.toLowerCase().includes(search.toLowerCase()) ||
-      o.paymentMethod.toLowerCase().includes(search.toLowerCase());
+      !query ||
+      o.orderNumber.toLowerCase().includes(query) ||
+      o.customerName.toLowerCase().includes(query) ||
+      o.city.toLowerCase().includes(query) ||
+      o.paymentMethod.toLowerCase().includes(query);
     return matchesStatus && matchesSearch;
   });
 
   return (
     <div className="space-y-4 sm:space-y-5 w-full max-w-full overflow-hidden">
-      {/* Title & Stats Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-slate-200 dark:border-slate-800">
         <div>
           <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight">
@@ -43,7 +45,6 @@ export const OrderManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Filter and Search Bar with View Switcher */}
       <OrderManagementFilter
         orders={orders}
         statusFilter={statusFilter}
@@ -54,14 +55,11 @@ export const OrderManagement: React.FC = () => {
         setViewMode={setViewMode}
       />
 
-      {/* Orders Container: 100% Fit Screen Width, Vertical Scroll Only */}
       <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-colors w-full">
-        {/* Mobile View (< 640px) */}
         <div className="block sm:hidden">
           <OrderManagementMobileCards orders={filteredOrders} getStatusBadge={getOrderStatusBadge} />
         </div>
 
-        {/* Desktop View (>= 640px) */}
         <div className="hidden sm:block w-full">
           {viewMode === 'table' ? (
             <OrderManagementTable orders={filteredOrders} />

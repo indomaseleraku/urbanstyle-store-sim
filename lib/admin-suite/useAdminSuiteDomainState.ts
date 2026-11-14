@@ -1,239 +1,469 @@
-// lib/admin-suite/useAdminSuiteDomainState.ts
-// Domain State & Supabase Realtime Sync untuk UrbanStyle Operations Suite
+'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { 
-  Role, Product, Order, OrderStatus, Employee, InboundShipment, 
-  ExpenseItem, PromoVoucher, ActivityLog, StockAdjustment 
+import {
+  Role,
+  Product,
+  Order,
+  OrderStatus,
+  Employee,
+  InboundShipment,
+  ExpenseItem,
+  ActivityLog,
+  StockAdjustment,
+  NotificationItem,
+  PromoVoucher,
+  AdminCustomerReview,
+  StoreSettings,
 } from './types';
-import { 
-  INITIAL_PRODUCTS, INITIAL_ORDERS, INITIAL_EMPLOYEES, 
-  INITIAL_INBOUND, INITIAL_EXPENSES, INITIAL_PROMOS, INITIAL_LOGS 
-} from './initialData';
-import { adminSupabaseService } from './adminSupabaseService';
-import { adminSupabaseMutations } from './adminSupabaseMutations';
+
+async function adminApiRequest<T = unknown>(action: string, payload: unknown): Promise<T> {
+  const res = await fetch('/api/admin/suite', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, payload }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.success) {
+    throw new Error(json?.error || `Permintaan admin gagal (HTTP ${res.status})`);
+  }
+  return json.data as T;
+}
 
 export function useAdminSuiteDomainState(role: Role) {
-  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
-  const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
-  const [employees, setEmployees] = useState<Employee[]>(INITIAL_EMPLOYEES);
-  const [inboundShipments, setInboundShipments] = useState<InboundShipment[]>(INITIAL_INBOUND);
-  const [expenses, setExpenses] = useState<ExpenseItem[]>(INITIAL_EXPENSES);
-  const [promos, setPromos] = useState<PromoVoucher[]>(INITIAL_PROMOS);
-  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(INITIAL_LOGS);
-  const [stockAdjustments, setStockAdjustments] = useState<StockAdjustment[]>([
-    {
-      id: 'adj-01',
-      sku: 'UB-0004',
-      productName: 'Celana Ankle Chino Katun Ultra Stretch Rapi',
-      previousStock: 28,
-      adjustedStock: 26,
-      diff: -2,
-      reason: 'Barang Rusak',
-      date: '14 Okt 2026',
-      adjustedBy: 'Staf Gudang'
-    }
-  ]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [inboundShipments, setInboundShipments] = useState<InboundShipment[]>([]);
+  const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+  const [stockAdjustments, setStockAdjustments] = useState<StockAdjustment[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [promos, setPromos] = useState<PromoVoucher[]>([]);
+  const [reviews, setReviews] = useState<AdminCustomerReview[]>([]);
+  const [storeSettings, setStoreSettings] = useState<StoreSettings>({ ppnRate: 11, approvalLimit: 10000000 });
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
-  // Sync dari Supabase saat awal mount
-  useEffect(() => {
-    let active = true;
-    async function syncFromCloud() {
-      const [p, o, e, pr, inb, exp, stkA, l] = await Promise.all([
-        adminSupabaseService.getProducts(),
-        adminSupabaseService.getOrders(),
-        adminSupabaseService.getEmployees(),
-        adminSupabaseService.getPromos(),
-        adminSupabaseService.getInbound(),
-        adminSupabaseService.getExpenses(),
-        adminSupabaseService.getStockAdjustments(),
-        adminSupabaseService.getActivityLogs()
-      ]);
-      if (!active) return;
-      if (p && p.length > 0) setProducts(p);
-      if (o && o.length > 0) setOrders(o);
-      if (e && e.length > 0) setEmployees(e);
-      if (pr && pr.length > 0) setPromos(pr);
-      if (inb && inb.length > 0) setInboundShipments(inb);
-      if (exp && exp.length > 0) setExpenses(exp);
-      if (stkA && stkA.length > 0) setStockAdjustments(stkA);
-      if (l && l.length > 0) setActivityLogs(l);
+  const loadAllData = useCallback(async () => {
+    setIsLoadingData(true);
+    try {
+      const res = await fetch('/api/admin/suite?resource=all', { cache: 'no-store' });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json?.error || `Gagal memuat data dashboard (HTTP ${res.status})`);
+      }
+
+      const d = json.data;
+      const prods: Product[] = d.products || [];
+      const ords: Order[] = d.orders || [];
+
+      setProducts(prods);
+      setOrders(ords);
+      setEmployees(d.employees || []);
+      setInboundShipments(d.inboundShipments || []);
+      setExpenses(d.expenses || []);
+      setActivityLogs(d.activityLogs || []);
+      setStockAdjustments(d.stockAdjustments || []);
+      setPromos(d.promos || []);
+      setReviews(d.reviews || []);
+      if (d.settings) setStoreSettings(d.settings);
+
+      const dynNotifs: NotificationItem[] = [];
+      prods
+        .filter((p) => p.stock <= p.safetyStock)
+        .forEach((p, idx) => {
+          dynNotifs.push({
+            id: `not_low_${p.id}`,
+            title: 'Peringatan Stok Kritis',
+            message: `${p.name} (${p.sku}) tersisa ${p.stock} pcs.`,
+            time: idx === 0 ? 'Baru saja' : 'Terkini',
+            read: false,
+            type: 'warning',
+          });
+        });
+
+      ords
+        .filter((o) => o.status === 'processing' || o.status === 'pending_payment')
+        .slice(0, 3)
+        .forEach((o) => {
+          dynNotifs.push({
+            id: `not_ord_${o.id}`,
+            title: o.status === 'pending_payment' ? 'Menunggu Pembayaran' : 'Pesanan Perlu Diproses',
+            message: `${o.orderNumber} (${o.customerName}) - Rp ${o.total.toLocaleString('id-ID')}`,
+            time: o.createdAt,
+            read: false,
+            type: 'info',
+          });
+        });
+
+      setNotifications(dynNotifs);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Gagal menyinkronkan data dari server.';
+      setMutationError(msg);
+    } finally {
+      setIsLoadingData(false);
     }
-    syncFromCloud();
-    return () => { active = false; };
   }, []);
 
-  const addLog = useCallback((action: string, details: string, category: ActivityLog['category']) => {
-    const newLog: ActivityLog = {
-      id: `log-${Date.now()}`,
-      timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
-      userName: role === 'superadmin' ? 'Kimy Eka (Owner)' : role === 'store_admin' ? 'Staf Kasir' : 'Staf Gudang',
-      userRole: role,
-      action,
-      details,
-      category
-    };
-    setActivityLogs(prev => [newLog, ...prev]);
-    adminSupabaseMutations.addActivityLog(newLog);
-  }, [role]);
+  useEffect(() => {
+    loadAllData();
+  }, [loadAllData]);
 
-  const addProduct = (prodData: Omit<Product, 'id' | 'salesCount' | 'rating'>) => {
-    const newProd: Product = { ...prodData, id: `prod-${Date.now()}`, salesCount: 0, rating: 5.0 };
-    setProducts(prev => [newProd, ...prev]);
-    adminSupabaseMutations.addProduct(newProd);
-    addLog('Tambah Produk Baru', `Menambahkan "${newProd.name}" (${newProd.sku}) ke katalog`, 'inventory');
-  };
+  const clearMutationError = useCallback(() => setMutationError(null), []);
 
-  const updateProduct = (id: string, updates: Partial<Product>) => {
-    setProducts(prev => prev.map(p => (p.id === id ? { ...p, ...updates } : p)));
-    adminSupabaseMutations.updateProduct(id, updates);
-    addLog('Update Produk', `Memperbarui data produk ID ${id}`, 'inventory');
-  };
-
-  const deleteProduct = (id: string) => {
-    const prod = products.find(p => p.id === id);
-    setProducts(prev => prev.filter(p => p.id !== id));
-    adminSupabaseMutations.deleteProduct(id);
-    if (prod) addLog('Hapus Produk', `Menghapus produk "${prod.name}" dari katalog`, 'inventory');
-  };
-
-  const adjustStock = (sku: string, diff: number, reason: StockAdjustment['reason']) => {
-    const product = products.find(p => p.sku === sku);
-    if (!product) return;
-    const prevStock = product.stock;
-    const newStock = Math.max(0, prevStock + diff);
-
-    setProducts(prev => prev.map(p => p.sku === sku ? { ...p, stock: newStock } : p));
-    const adj: StockAdjustment = {
-      id: `adj-${Date.now()}`,
-      sku,
-      productName: product.name,
-      previousStock: prevStock,
-      adjustedStock: newStock,
-      diff,
-      reason,
-      date: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),
-      adjustedBy: role === 'warehouse_admin' ? 'Staf Gudang' : 'Superadmin'
-    };
-    setStockAdjustments(prev => [adj, ...prev]);
-    adminSupabaseMutations.adjustStock(sku, diff, reason, adj.adjustedBy, prevStock, newStock, product.name);
-    addLog('Penyesuaian Stok', `SKU ${sku} diubah ${diff > 0 ? `+${diff}` : diff} unit (${reason})`, 'inventory');
-  };
-
-  const updateOrderStatus = (orderId: string, status: OrderStatus, trackingNumber?: string) => {
-    const targetOrder = orders.find(o => o.id === orderId || o.orderNumber === orderId);
-    const orderNum = targetOrder ? targetOrder.orderNumber : orderId;
-
-    setOrders(prev => prev.map(o => {
-      if (o.id === orderId || o.orderNumber === orderId) {
-        return {
-          ...o,
-          status,
-          trackingNumber: trackingNumber !== undefined ? trackingNumber : o.trackingNumber,
-          paymentStatus: status === 'processing' || status === 'packing' || status === 'shipped' || status === 'delivered' ? 'paid' : o.paymentStatus
-        };
+  const addLog = useCallback(
+    async (action: string, target: string, type: ActivityLog['type']) => {
+      try {
+        const created = await adminApiRequest<ActivityLog>('addActivityLog', { action, target, type });
+        if (created) {
+          setActivityLogs((prev) => [created, ...prev]);
+        }
+      } catch {
+        // Log write failures do not override domain mutation confirmation
       }
-      return o;
-    }));
-    adminSupabaseMutations.updateOrderStatus(orderNum, status, trackingNumber);
-    addLog('Update Status Pesanan', `Pesanan ${orderNum} diubah status menjadi "${status}"`, 'order');
+    },
+    []
+  );
+
+  const handleMutationError = (err: unknown, fallback: string) => {
+    const msg = err instanceof Error ? err.message : fallback;
+    setMutationError(msg);
   };
 
-  const createOrder = (newOrderData: Partial<Order>): Order => {
-    const newOrder: Order = {
-      id: `ord-${Date.now()}`,
-      orderNumber: `ORD-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-      customerName: newOrderData.customerName || 'Pelanggan Baru',
-      customerPhone: newOrderData.customerPhone || '+62 812-0000-0000',
-      customerEmail: newOrderData.customerEmail || 'buyer@urbanstyle.com',
-      shippingAddress: newOrderData.shippingAddress || 'Jl. Jenderal Sudirman No. 1',
-      city: newOrderData.city || 'Jakarta Pusat',
-      courier: newOrderData.courier || 'SiCepat Kilat',
-      paymentMethod: newOrderData.paymentMethod || 'QRIS',
-      paymentStatus: 'paid',
-      items: newOrderData.items || [],
-      subtotal: newOrderData.subtotal || 0,
-      shippingCost: newOrderData.shippingCost || 20000,
-      discount: newOrderData.discount || 0,
-      total: newOrderData.total || 0,
-      status: 'processing',
-      createdAt: 'Hari ini ' + new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
-      notes: newOrderData.notes || ''
-    };
+  const updateOrderStatus = async (orderId: string, newStatus: OrderStatus, trackingNumber?: string) => {
+    setMutationError(null);
+    const snapshot = orders;
+    const targetOrder = orders.find((o) => o.id === orderId);
+    try {
+      const result = await adminApiRequest<{
+        status: OrderStatus;
+        trackingNumber?: string;
+        paymentStatus: 'paid' | 'pending' | 'failed';
+        restocked: boolean;
+      }>('updateOrderStatus', { id: orderId, status: newStatus, trackingNumber });
 
-    if (newOrder.items) {
-      newOrder.items.forEach(item => {
-        setProducts(prev => prev.map(p => {
-          if (p.id === item.productId || p.sku === item.sku) {
-            const nextStock = Math.max(0, p.stock - item.quantity);
-            adminSupabaseMutations.updateProduct(p.id, { stock: nextStock });
-            return { ...p, stock: nextStock, salesCount: p.salesCount + item.quantity };
-          }
-          return p;
-        }));
-      });
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === orderId
+            ? {
+                ...o,
+                status: result?.status || newStatus,
+                trackingNumber: result?.trackingNumber ?? trackingNumber ?? o.trackingNumber,
+                paymentStatus: result?.paymentStatus || o.paymentStatus,
+              }
+            : o
+        )
+      );
+
+      if (result?.restocked) {
+        const freshProds = await fetch('/api/admin/suite?resource=products', { cache: 'no-store' })
+          .then((r) => r.json())
+          .catch(() => null);
+        if (freshProds?.success && Array.isArray(freshProds.data)) {
+          setProducts(freshProds.data);
+        }
+      }
+
+      if (targetOrder) {
+        void addLog(
+          `Memperbarui status pesanan ke ${newStatus.toUpperCase()}`,
+          targetOrder.orderNumber,
+          'order'
+        );
+      }
+    } catch (err) {
+      setOrders(snapshot);
+      handleMutationError(err, 'Gagal memperbarui status pesanan.');
+    }
+  };
+
+  const addProduct = async (product: Omit<Product, 'id' | 'salesCount' | 'rating'>) => {
+    setMutationError(null);
+    try {
+      const created = await adminApiRequest<Product>('addProduct', product);
+      setProducts((prev) => [created, ...prev]);
+      void addLog('Menambahkan produk katalog baru', `${created.name} (${created.sku})`, 'inventory');
+    } catch (err) {
+      handleMutationError(err, 'Gagal menambahkan produk.');
+    }
+  };
+
+  const updateProduct = async (id: string, updates: Partial<Product>) => {
+    setMutationError(null);
+    const snapshot = products;
+    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+    try {
+      await adminApiRequest('updateProduct', { id, updates });
+      const target = snapshot.find((p) => p.id === id);
+      void addLog('Memperbarui data katalog produk', `${updates.name || target?.name || id}`, 'inventory');
+    } catch (err) {
+      setProducts(snapshot);
+      handleMutationError(err, 'Gagal memperbarui data produk.');
+    }
+  };
+
+  const deleteProduct = async (id: string) => {
+    setMutationError(null);
+    const snapshot = products;
+    const target = products.find((p) => p.id === id);
+    setProducts((prev) => prev.filter((p) => p.id !== id));
+    try {
+      await adminApiRequest('deleteProduct', { id });
+      if (target) void addLog('Menghapus produk dari katalog', target.name, 'inventory');
+    } catch (err) {
+      setProducts(snapshot);
+      handleMutationError(err, 'Gagal menghapus produk.');
+    }
+  };
+
+  const adjustStock = async (sku: string, diff: number, reason: StockAdjustment['reason']) => {
+    if (!Number.isInteger(diff) || diff === 0) return;
+    setMutationError(null);
+    const target = products.find((p) => p.sku === sku);
+    if (target && target.stock + diff < 0) {
+      setMutationError(`Penyesuaian ditolak: stok ${sku} (${target.stock}) tidak mencukupi pengurangan ${Math.abs(diff)}.`);
+      return;
     }
 
-    setOrders(prev => [newOrder, ...prev]);
-    adminSupabaseMutations.createOrder(newOrder);
-    addLog('Pesanan Dibuat', `Pesanan ${newOrder.orderNumber} berhasil dibuat melalui etalase`, 'order');
-    return newOrder;
+    try {
+      const res = await adminApiRequest<{ adjustment: StockAdjustment; newStock: number }>('adjustStock', {
+        sku,
+        diff,
+        reason,
+      });
+
+      setProducts((prev) => prev.map((p) => (p.sku === sku ? { ...p, stock: res.newStock } : p)));
+      setStockAdjustments((prev) => [res.adjustment, ...prev]);
+      void addLog(
+        `Penyesuaian stok ${diff > 0 ? `+${diff}` : diff} pcs (${reason})`,
+        `${res.adjustment.productName} [${sku}]`,
+        'inventory'
+      );
+    } catch (err) {
+      handleMutationError(err, 'Gagal menyimpan penyesuaian stok.');
+    }
   };
 
-  const addEmployee = (empData: Omit<Employee, 'id' | 'lastLogin'>) => {
-    const newEmp: Employee = { ...empData, id: `stf_${Date.now().toString().slice(-4)}`, lastLogin: 'Baru dibuat' };
-    setEmployees(prev => [newEmp, ...prev]);
-    adminSupabaseMutations.addEmployee(newEmp);
-    addLog('Tambah Karyawan', `Menambahkan ${newEmp.name} (${newEmp.roleLabel})`, 'employee');
+  const addEmployee = async (emp: Omit<Employee, 'id' | 'lastLogin'>) => {
+    setMutationError(null);
+    try {
+      const created = await adminApiRequest<Employee>('addEmployee', emp);
+      setEmployees((prev) => [created, ...prev]);
+      void addLog('Mendaftarkan akun staf baru', `${created.name} (${created.roleLabel})`, 'employee');
+    } catch (err) {
+      handleMutationError(err, 'Gagal menambahkan akun staf.');
+    }
   };
 
-  const updateEmployee = (id: string, updates: Partial<Employee>) => {
-    setEmployees(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
-    adminSupabaseMutations.updateEmployee(id, updates);
-    addLog('Update Data Karyawan', `Memperbarui profil staf ID ${id}`, 'employee');
+  const updateEmployee = async (id: string, updates: Partial<Employee>) => {
+    setMutationError(null);
+    const snapshot = employees;
+    setEmployees((prev) => prev.map((e) => (e.id === id ? { ...e, ...updates } : e)));
+    try {
+      await adminApiRequest('updateEmployee', { id, updates });
+      const target = snapshot.find((e) => e.id === id);
+      void addLog('Memperbarui data karyawan', target?.name || id, 'employee');
+    } catch (err) {
+      setEmployees(snapshot);
+      handleMutationError(err, 'Gagal memperbarui data karyawan.');
+    }
   };
 
-  const toggleEmployeeStatus = (id: string) => {
-    setEmployees(prev => prev.map(e => {
-      if (e.id === id) {
-        const nextStatus = e.status === 'active' ? 'inactive' : 'active';
-        adminSupabaseMutations.updateEmployee(id, { status: nextStatus });
-        addLog('Ubah Status Akses', `Status akses ${e.name} diubah menjadi ${nextStatus}`, 'employee');
-        return { ...e, status: nextStatus };
+  const toggleEmployeeStatus = async (id: string) => {
+    setMutationError(null);
+    const target = employees.find((e) => e.id === id);
+    if (!target) return;
+    const nextStatus: Employee['status'] = target.status === 'active' ? 'inactive' : 'active';
+    const snapshot = employees;
+    setEmployees((prev) => prev.map((e) => (e.id === id ? { ...e, status: nextStatus } : e)));
+
+    try {
+      await adminApiRequest('updateEmployee', { id, updates: { status: nextStatus } });
+      void addLog(
+        nextStatus === 'active' ? 'Mengaktifkan akun staf' : 'Membekukan akses staf',
+        target.name,
+        'employee'
+      );
+    } catch (err) {
+      setEmployees(snapshot);
+      handleMutationError(err, 'Gagal mengubah status staf.');
+    }
+  };
+
+  const deleteEmployee = async (id: string) => {
+    setMutationError(null);
+    const target = employees.find((e) => e.id === id);
+    const snapshot = employees;
+    setEmployees((prev) => prev.filter((e) => e.id !== id));
+    try {
+      await adminApiRequest('deleteEmployee', { id });
+      if (target) void addLog('Menghapus akun karyawan', target.name, 'employee');
+    } catch (err) {
+      setEmployees(snapshot);
+      handleMutationError(err, 'Gagal menghapus karyawan.');
+    }
+  };
+
+  const addInbound = async (payload: Omit<InboundShipment, 'id' | 'status'>) => {
+    setMutationError(null);
+    try {
+      const created = await adminApiRequest<InboundShipment>('addInbound', payload);
+      setInboundShipments((prev) => [created, ...prev]);
+      void addLog('Menerbitkan Purchase Order masuk', `${created.poNumber} (${created.supplierName})`, 'inventory');
+    } catch (err) {
+      handleMutationError(err, 'Gagal membuat PO masuk.');
+    }
+  };
+
+  const receiveShipment = async (shipmentId: string, targetProductId?: string) => {
+    setMutationError(null);
+    const target = inboundShipments.find((s) => s.id === shipmentId);
+    const snapshot = inboundShipments;
+    setInboundShipments((prev) => prev.map((s) => (s.id === shipmentId ? { ...s, status: 'received' } : s)));
+
+    try {
+      const res = await adminApiRequest<{
+        status: 'received';
+        restockedProductId?: string;
+        adjustment?: StockAdjustment;
+      }>('updateInboundStatus', { id: shipmentId, status: 'received', targetProductId });
+
+      if (res?.adjustment) {
+        setStockAdjustments((prev) => [res.adjustment!, ...prev]);
+        setProducts((prev) =>
+          prev.map((p) => (p.id === res.restockedProductId ? { ...p, stock: res.adjustment!.newStock } : p))
+        );
       }
-      return e;
-    }));
+
+      if (target) void addLog('Menerima barang masuk supplier (PO)', `${target.poNumber} - ${target.supplierName}`, 'inventory');
+    } catch (err) {
+      setInboundShipments(snapshot);
+      handleMutationError(err, 'Gagal mengonfirmasi penerimaan PO.');
+    }
   };
 
-  const receiveShipment = (id: string) => {
-    const shipment = inboundShipments.find(s => s.id === id);
-    if (!shipment) return;
-    setInboundShipments(prev => prev.map(s => s.id === id ? { ...s, status: 'received' } : s));
-    adminSupabaseMutations.updateInboundStatus(id, 'received');
-    addLog('Penerimaan Gudang', `Barang masuk ${shipment.poNumber} (${shipment.totalUnits} unit) diverifikasi QC`, 'inventory');
+  const addExpense = async (expense: Omit<ExpenseItem, 'id' | 'date'>) => {
+    setMutationError(null);
+    try {
+      const created = await adminApiRequest<ExpenseItem>('addExpense', expense);
+      setExpenses((prev) => [created, ...prev]);
+      void addLog('Mencatat biaya operasional', `${created.category}: ${created.description}`, 'finance');
+    } catch (err) {
+      handleMutationError(err, 'Gagal mencatat biaya operasional.');
+    }
   };
 
-  const addExpense = (expData: Omit<ExpenseItem, 'id' | 'status'>) => {
-    const newExp: ExpenseItem = { ...expData, id: `exp-${Date.now()}`, status: 'approved' };
-    setExpenses(prev => [newExp, ...prev]);
-    adminSupabaseMutations.addExpense(newExp);
-    addLog('Catatan Beban Baru', `Beban ${newExp.category} Rp ${newExp.amount.toLocaleString('id-ID')} dicatat`, 'finance');
+  const addPromo = async (promo: Omit<PromoVoucher, 'id' | 'usageCount'>) => {
+    setMutationError(null);
+    try {
+      const created = await adminApiRequest<PromoVoucher>('addPromo', promo);
+      setPromos((prev) => [created, ...prev]);
+      void addLog('Menerbitkan kupon promo baru', created.code, 'system');
+    } catch (err) {
+      handleMutationError(err, 'Gagal membuat kupon promo.');
+    }
   };
 
-  const addPromo = (pData: Omit<PromoVoucher, 'id' | 'usageCount'>) => {
-    const newP: PromoVoucher = { ...pData, id: `prm-${Date.now()}`, usageCount: 0 };
-    setPromos(prev => [newP, ...prev]);
-    adminSupabaseMutations.addPromo(newP);
-    addLog('Buat Voucher Promo', `Voucher "${newP.code}" diaktifkan`, 'order');
+  const togglePromoStatus = async (promoId: string) => {
+    setMutationError(null);
+    const snapshot = promos;
+    const target = promos.find((p) => p.id === promoId);
+    if (!target) return;
+    const optimisticStatus: PromoVoucher['status'] = target.status === 'active' ? 'expired' : 'active';
+    setPromos((prev) => prev.map((p) => (p.id === promoId ? { ...p, status: optimisticStatus } : p)));
+
+    try {
+      const status = await adminApiRequest<'active' | 'expired'>('togglePromoStatus', { id: promoId });
+      setPromos((prev) => prev.map((p) => (p.id === promoId ? { ...p, status } : p)));
+      void addLog(`${status === 'active' ? 'Mengaktifkan' : 'Menonaktifkan'} kupon promo`, target.code, 'system');
+    } catch (err) {
+      setPromos(snapshot);
+      handleMutationError(err, 'Gagal mengubah status kupon.');
+    }
   };
+
+  const saveSettings = async (next: StoreSettings): Promise<boolean> => {
+    setMutationError(null);
+    try {
+      const saved = await adminApiRequest<StoreSettings>('saveSettings', next);
+      setStoreSettings(saved);
+      void addLog('Memperbarui konfigurasi pajak & limit approval', `PPN ${saved.ppnRate}%`, 'finance');
+      return true;
+    } catch (err) {
+      handleMutationError(err, 'Gagal menyimpan konfigurasi toko.');
+      return false;
+    }
+  };
+
+  const createOrder = async (
+    newOrderData: Omit<Order, 'id' | 'orderNumber' | 'createdAt' | 'paymentStatus' | 'status'>
+  ): Promise<Order | null> => {
+    setMutationError(null);
+    try {
+      const created = await adminApiRequest<Order>('createOrder', newOrderData);
+      setOrders((prev) => [created, ...prev]);
+      setProducts((prev) =>
+        prev.map((prod) => {
+          const orderedItem = created.items.find((i) => i.productId === prod.id);
+          return orderedItem
+            ? {
+                ...prod,
+                stock: Math.max(0, prod.stock - orderedItem.quantity),
+                salesCount: prod.salesCount + orderedItem.quantity,
+              }
+            : prod;
+        })
+      );
+      void addLog('Menerima pesanan toko online', `${created.orderNumber} - ${created.customerName}`, 'order');
+      return created;
+    } catch (err) {
+      handleMutationError(err, 'Gagal membuat pesanan.');
+      return null;
+    }
+  };
+
+  const markNotificationRead = (id: string) => {
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+  };
+
+  const clearNotifications = () => setNotifications([]);
+
+  void role;
 
   return {
-    products, addProduct, updateProduct, deleteProduct, adjustStock,
-    orders, updateOrderStatus, createOrder,
-    employees, addEmployee, updateEmployee, toggleEmployeeStatus,
-    inboundShipments, receiveShipment, stockAdjustments,
-    expenses, addExpense,
-    promos, addPromo,
-    activityLogs
+    products,
+    orders,
+    employees,
+    inboundShipments,
+    expenses,
+    activityLogs,
+    stockAdjustments,
+    notifications,
+    promos,
+    reviews,
+    storeSettings,
+    isLoadingData,
+    mutationError,
+    clearMutationError,
+    refreshData: loadAllData,
+    updateOrderStatus,
+    addProduct,
+    updateProduct,
+    deleteProduct,
+    adjustStock,
+    addEmployee,
+    updateEmployee,
+    toggleEmployeeStatus,
+    deleteEmployee,
+    addInbound,
+    receiveShipment,
+    addExpense,
+    addPromo,
+    togglePromoStatus,
+    saveSettings,
+    createOrder,
+    markNotificationRead,
+    clearNotifications,
   };
 }

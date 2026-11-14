@@ -27,6 +27,13 @@ export const ProductModalGallery: React.FC<ProductModalGalleryProps> = ({
   onToggleWishlist,
   onOpenInfoModal,
 }) => {
+  const handleImgError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    if (img.dataset.fallbackApplied === '1') return;
+    img.dataset.fallbackApplied = '1';
+    img.src = 'https://images.unsplash.com/photo-1523381210434-271e8be1f52b?auto=format&fit=crop&w=900&q=80';
+  };
+
   return (
     <div className="lg:col-span-7 p-4 sm:p-6 lg:p-8 bg-zinc-50 border-b lg:border-b-0 lg:border-r border-zinc-200 space-y-4">
       {/* Main Picture */}
@@ -34,6 +41,7 @@ export const ProductModalGallery: React.FC<ProductModalGalleryProps> = ({
         <img
           src={getOptimizedImageUrl(mainDisplayImage, 900, 80)}
           alt={product.name}
+          onError={handleImgError}
           className="w-full h-full object-cover object-center transition-all duration-300"
         />
 

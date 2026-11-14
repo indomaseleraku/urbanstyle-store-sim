@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import TrackingStepper from '@/components/tracking/TrackingStepper';
 import TrackingTimeline from '@/components/tracking/TrackingTimeline';
+import { copyToClipboard } from '@/lib/utils/clipboard';
 
 export default function OrderTrackingPage({
   params,
@@ -35,27 +36,45 @@ export default function OrderTrackingPage({
   const [trackingNumber, setTrackingNumber] = useState('-');
   const [isLoading, setIsLoading] = useState(true);
   const [copiedResi, setCopiedResi] = useState(false);
+  const [trackingError, setTrackingError] = useState<string | null>(null);
+  const [authRequired, setAuthRequired] = useState(false);
 
   const loadData = async () => {
     setIsLoading(true);
-    const result = await dataStore.getOrderTracking(orderNumber);
-    if (result.order) {
-      setOrder(result.order);
-      setCurrentStep(result.currentStep);
-      setEvents(result.events);
-      setCourier(result.courier);
-      setTrackingNumber(result.trackingNumber);
+    setTrackingError(null);
+    setAuthRequired(false);
+    try {
+      const result = await dataStore.getOrderTracking(orderNumber);
+      if (result.order) {
+        setOrder(result.order);
+        setCurrentStep(result.currentStep);
+        setEvents(result.events);
+        setCourier(result.courier);
+        setTrackingNumber(result.trackingNumber);
+      } else {
+        setOrder(null);
+        setAuthRequired(result.statusCode === 401);
+        setTrackingError(
+          result.error ||
+            (result.statusCode === 401
+              ? 'Autentikasi diperlukan untuk melacak detail pesanan.'
+              : `Pesanan #${orderNumber} tidak ditemukan atau bukan milik akun ini.`)
+        );
+      }
+    } catch {
+      setOrder(null);
+      setTrackingError('Gagal terhubung ke server pelacakan.');
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   useEffect(() => {
     loadData();
   }, [orderNumber]);
 
-  const handleCopyResi = () => {
-    if (trackingNumber && trackingNumber !== '-') {
-      navigator.clipboard.writeText(trackingNumber);
+  const handleCopyResi = async () => {
+    if (trackingNumber && trackingNumber !== '-' && (await copyToClipboard(trackingNumber))) {
       setCopiedResi(true);
       setTimeout(() => setCopiedResi(false), 2000);
     }
@@ -80,17 +99,30 @@ export default function OrderTrackingPage({
         <div className="max-w-md w-full bg-white border border-zinc-200 p-8 text-center space-y-4">
           <Package className="w-12 h-12 mx-auto text-zinc-400" />
           <h1 className="text-base font-bold uppercase tracking-tight text-zinc-950">
-            Pesanan Tidak Ditemukan
+            {authRequired ? 'Login Diperlukan' : 'Pesanan Tidak Ditemukan'}
           </h1>
           <p className="text-xs text-zinc-500">
-            Nomor pesanan <span className="font-mono font-bold text-black">{orderNumber}</span> tidak terdaftar dalam basis data sistem.
+            {trackingError || (
+              <>
+                Nomor pesanan <span className="font-mono font-bold text-black">{orderNumber}</span> tidak terdaftar dalam basis data sistem.
+              </>
+            )}
           </p>
-          <Link
-            href="/"
-            className="inline-block px-5 py-2.5 bg-black text-white text-xs font-bold uppercase tracking-wider"
-          >
-            Kembali ke Beranda
-          </Link>
+          <div className="flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={loadData}
+              className="px-4 py-2.5 border border-zinc-300 text-zinc-800 text-xs font-bold uppercase tracking-wider hover:bg-zinc-100 cursor-pointer"
+            >
+              Coba Lagi
+            </button>
+            <Link
+              href={authRequired ? '/?login=1' : '/'}
+              className="inline-block px-5 py-2.5 bg-black text-white text-xs font-bold uppercase tracking-wider"
+            >
+              {authRequired ? 'Masuk Akun' : 'Kembali ke Beranda'}
+            </Link>
+          </div>
         </div>
       </div>
     );

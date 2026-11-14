@@ -1,16 +1,16 @@
 // app/api/auth/register/route.ts
-// Server-side Registration Endpoint dengan bcrypt hashing
-// Menerima email + password + fullName, hash password, simpan ke Supabase
+// Server-side Registration Endpoint dengan bcrypt hashing & HttpOnly cookie
 
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { checkRateLimit, REGISTER_RATE_LIMIT, getClientIp } from '@/lib/services/rateLimiter';
+import { createSessionToken } from '@/lib/services/cryptoSession';
+import { applySessionCookieToResponse } from '@/lib/services/sessionServerHelper';
 
 const BCRYPT_ROUNDS = 12;
 
 export async function POST(req: NextRequest) {
-  // — Rate limiting: maks 5 registrasi per IP per jam —
   const ip = getClientIp(req);
   const rl = checkRateLimit(`register:${ip}`, REGISTER_RATE_LIMIT);
   if (!rl.allowed) {
@@ -25,10 +25,9 @@ export async function POST(req: NextRequest) {
     const rawEmail = String(body.email || '').toLowerCase().trim();
     const rawPass = String(body.password || '').trim();
     const fullName = String(body.full_name || '').trim();
-    const preferredSize = String(body.preferred_size || 'M').trim();
-    const phone = body.phone ? String(body.phone).trim() : null;
+    const preferredSize = String(body.preferred_size || 'M').trim().slice(0, 10) || 'M';
+    const phone = body.phone ? String(body.phone).trim().slice(0, 30) : null;
 
-    // — Validasi input —
     if (!rawEmail || !rawEmail.includes('@')) {
       return NextResponse.json(
         { success: false, message: 'Format alamat email tidak valid.' },
@@ -48,12 +47,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // — Cek duplikasi email —
-    const { data: existing } = await supabaseAdmin
+    const { data: existing, error: dupErr } = await supabaseAdmin
       .from('user_credentials')
       .select('id')
       .eq('email', rawEmail)
       .maybeSingle();
+
+    if (dupErr) {
+      return NextResponse.json(
+        { success: false, message: 'Gagal memeriksa ketersediaan email.' },
+        { status: 500 }
+      );
+    }
 
     if (existing) {
       return NextResponse.json(
@@ -62,17 +67,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // — Hash password dengan bcrypt —
     const passwordHash = await bcrypt.hash(rawPass, BCRYPT_ROUNDS);
 
-    // — Simpan ke user_credentials —
     const { data: credData, error: credError } = await supabaseAdmin
       .from('user_credentials')
       .insert({
         email: rawEmail,
         password_hash: passwordHash,
         role: 'customer',
-        full_name: fullName,
+        full_name: fullName.slice(0, 150),
         phone,
         preferred_size: preferredSize,
       })
@@ -86,12 +89,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // — Upsert ke profiles —
-    await supabaseAdmin.from('profiles').upsert(
+    const { error: profileErr } = await supabaseAdmin.from('profiles').upsert(
       {
         id: credData.id,
         email: rawEmail,
-        full_name: fullName,
+        full_name: fullName.slice(0, 150),
         phone,
         role: 'customer',
         preferred_size: preferredSize,
@@ -99,7 +101,16 @@ export async function POST(req: NextRequest) {
       { onConflict: 'email' }
     );
 
-    return NextResponse.json(
+    if (profileErr) {
+      await supabaseAdmin.from('user_credentials').delete().eq('id', credData.id);
+      return NextResponse.json(
+        { success: false, message: 'Gagal menginisialisasi profil akun. Silakan coba kembali.' },
+        { status: 500 }
+      );
+    }
+
+    const token = await createSessionToken(credData.id, credData.role);
+    const response = NextResponse.json(
       {
         success: true,
         message: 'Akun berhasil dibuat.',
@@ -114,6 +125,8 @@ export async function POST(req: NextRequest) {
       },
       { status: 201 }
     );
+
+    return applySessionCookieToResponse(response, credData.id, credData.role, token);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Terjadi kesalahan server.';
     return NextResponse.json({ success: false, message: msg }, { status: 500 });

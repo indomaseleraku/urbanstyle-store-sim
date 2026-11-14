@@ -6,10 +6,25 @@ import { useAdminSuite } from '@/lib/admin-suite/AdminSuiteContext';
 import { Printer, X, Building2 } from 'lucide-react';
 
 export const InvoiceModal: React.FC = () => {
-  const { selectedInvoiceOrder, setSelectedInvoiceOrder, formatRupiah } = useAdminSuite();
+  const { selectedInvoiceOrder, setSelectedInvoiceOrder, formatRupiah, storeSettings } = useAdminSuite();
 
   if (!selectedInvoiceOrder) return null;
   const o = selectedInvoiceOrder;
+  const ppnRate = storeSettings?.ppnRate ?? 11;
+
+  const badgeStyle =
+    o.status === 'cancelled'
+      ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+      : o.paymentStatus === 'paid'
+        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+        : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800';
+
+  const statusLabel =
+    o.status === 'cancelled'
+      ? 'STATUS: DIBATALKAN'
+      : o.paymentStatus === 'paid'
+        ? `STATUS: LUNAS (${o.paymentMethod.toUpperCase()})`
+        : `STATUS: MENUNGGU PEMBAYARAN (${o.paymentMethod.toUpperCase()})`;
 
   const handlePrint = () => {
     window.print();
@@ -66,8 +81,8 @@ export const InvoiceModal: React.FC = () => {
               <h2 className="text-lg font-black text-slate-900 dark:text-white tracking-wider">FAKTUR / INVOICE</h2>
               <p className="font-mono font-bold text-slate-800 dark:text-slate-200 mt-1">{o.orderNumber}</p>
               <p className="text-slate-500 dark:text-slate-400 font-mono text-[11px]">{o.createdAt}</p>
-              <div className="mt-2 inline-block px-2.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-bold text-[10px]">
-                STATUS: LUNAS ({o.paymentMethod.toUpperCase()})
+              <div className={`mt-2 inline-block px-2.5 py-0.5 rounded border font-bold text-[10px] ${badgeStyle}`}>
+                {statusLabel}
               </div>
             </div>
           </div>
@@ -132,8 +147,10 @@ export const InvoiceModal: React.FC = () => {
                 </div>
               )}
               <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                <span>PPN 11% (Termasuk):</span>
-                <span className="font-mono tabular-nums text-slate-900 dark:text-slate-100">{formatRupiah(Math.round(o.total * 0.11 / 1.11))}</span>
+                <span>PPN {ppnRate}% (Termasuk):</span>
+                <span className="font-mono tabular-nums text-slate-900 dark:text-slate-100">
+                  {formatRupiah(Math.round((o.total * ppnRate) / (100 + ppnRate)))}
+                </span>
               </div>
               <div className="flex justify-between font-bold text-slate-900 dark:text-white text-sm pt-2 border-t border-slate-900 dark:border-slate-700">
                 <span>TOTAL AKHIR:</span>

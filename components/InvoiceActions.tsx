@@ -3,6 +3,7 @@
 
 import React, { useState } from 'react';
 import { Printer, Copy, Check } from 'lucide-react';
+import { copyToClipboard } from '@/lib/utils/clipboard';
 
 export function InvoicePrintButton() {
   return (
@@ -28,10 +29,12 @@ export function CopyButton({
 }) {
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(textToCopy);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    const ok = await copyToClipboard(textToCopy);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   return (

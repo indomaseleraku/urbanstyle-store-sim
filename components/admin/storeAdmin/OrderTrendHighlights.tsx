@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowUpRight } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { useAdminSuite } from '@/lib/admin-suite/AdminSuiteContext';
 
 interface OrderTrendHighlightsProps {
@@ -7,6 +7,7 @@ interface OrderTrendHighlightsProps {
   avgDailyOrders: number;
   peakDay: { orders: number; date: string };
   total30dRevenue: number;
+  trendDeltaPct?: number | null;
 }
 
 export const OrderTrendHighlights: React.FC<OrderTrendHighlightsProps> = ({
@@ -14,6 +15,7 @@ export const OrderTrendHighlights: React.FC<OrderTrendHighlightsProps> = ({
   avgDailyOrders,
   peakDay,
   total30dRevenue,
+  trendDeltaPct,
 }) => {
   const { formatRupiah } = useAdminSuite();
 
@@ -25,9 +27,20 @@ export const OrderTrendHighlights: React.FC<OrderTrendHighlightsProps> = ({
           <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white font-mono tabular-nums">
             {total30dOrders}
           </span>
-          <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center">
-            <ArrowUpRight className="w-3 h-3 inline" /> +19%
-          </span>
+          {trendDeltaPct !== null && trendDeltaPct !== undefined && (
+            <span
+              className={`text-[10px] font-semibold flex items-center ${
+                trendDeltaPct >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+              }`}
+            >
+              {trendDeltaPct >= 0 ? (
+                <ArrowUpRight className="w-3 h-3 inline" />
+              ) : (
+                <ArrowDownRight className="w-3 h-3 inline" />
+              )}
+              {trendDeltaPct >= 0 ? `+${trendDeltaPct}%` : `${trendDeltaPct}%`}
+            </span>
+          )}
         </div>
       </div>
 

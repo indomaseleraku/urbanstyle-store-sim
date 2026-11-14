@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useAdminSuite } from '@/lib/admin-suite/AdminSuiteContext';
-import { Plus } from 'lucide-react';
+import { Plus, Power, X } from 'lucide-react';
 
 export const PromoManager: React.FC = () => {
-  const { promos, addPromo, formatRupiah } = useAdminSuite();
+  const { promos, addPromo, togglePromoStatus, formatRupiah } = useAdminSuite();
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [code, setCode] = useState('');
@@ -11,24 +11,31 @@ export const PromoManager: React.FC = () => {
   const [discountValue, setDiscountValue] = useState(10);
   const [minPurchase, setMinPurchase] = useState(200000);
   const [quota, setQuota] = useState(200);
-  const [validUntil, setValidUntil] = useState('31 Des 2026');
+  const [validUntil, setValidUntil] = useState(
+    new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  );
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleCreatePromo = (e: React.FormEvent) => {
+  const handleCreatePromo = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!code) return;
+    if (!code.trim() || discountValue <= 0 || quota <= 0) return;
 
-    addPromo({
-      code: code.toUpperCase().trim(),
-      discountType,
-      discountValue: Number(discountValue),
-      minPurchase: Number(minPurchase),
-      quota: Number(quota),
-      validUntil,
-      status: 'active',
-    });
-
-    setCode('');
-    setShowAddModal(false);
+    setIsSaving(true);
+    try {
+      await addPromo({
+        code: code.toUpperCase().trim(),
+        discountType,
+        discountValue: Math.max(1, Number(discountValue)),
+        minPurchase: Math.max(0, Number(minPurchase)),
+        quota: Math.max(1, Number(quota)),
+        validUntil,
+        status: 'active',
+      });
+      setCode('');
+      setShowAddModal(false);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -39,16 +46,16 @@ export const PromoManager: React.FC = () => {
             Voucher Promo & Kupon Diskon Toko
           </h1>
           <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Buat kode promo belanja untuk mendongkrak konversi checkout pelanggan.
+            Buat kode promo belanja dan kelola status aktif voucher checkout pelanggan.
           </p>
         </div>
 
         <button
           onClick={() => setShowAddModal(true)}
-          className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold rounded-lg shadow-xs flex items-center gap-1.5 transition-colors self-start sm:self-auto min-h-[36px]"
+          className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold rounded-lg shadow-xs flex items-center gap-1.5 transition-colors self-start sm:self-auto min-h-[36px] cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
-          + Buat Kupon Baru
+          Buat Kupon Baru
         </button>
       </div>
 
@@ -58,20 +65,36 @@ export const PromoManager: React.FC = () => {
             key={p.id}
             className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 p-5 shadow-sm space-y-3 transition-colors"
           >
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <span className="font-mono font-black text-sm bg-slate-900 dark:bg-slate-800 text-white px-2.5 py-1 rounded-md tracking-wider border border-slate-800 dark:border-slate-700">
                   {p.code}
                 </span>
-                <span className="text-[10px] font-semibold text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
-                  {p.status === 'active' ? 'Aktif' : 'Kedaluwarsa'}
+                <span
+                  className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${
+                    p.status === 'active'
+                      ? 'text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800'
+                      : 'text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                  }`}
+                >
+                  {p.status === 'active' ? 'Aktif' : 'Nonaktif'}
                 </span>
               </div>
-              <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 font-mono">
-                {p.discountType === 'percentage'
-                  ? `Diskon ${p.discountValue}%`
-                  : `Potongan ${formatRupiah(p.discountValue)}`}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 font-mono">
+                  {p.discountType === 'percentage'
+                    ? `Diskon ${p.discountValue}%`
+                    : `Potongan ${formatRupiah(p.discountValue)}`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => togglePromoStatus(p.id)}
+                  className="p-1.5 rounded border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                  title={p.status === 'active' ? 'Nonaktifkan Kupon' : 'Aktifkan Kupon'}
+                >
+                  <Power className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
 
             <div className="space-y-1 text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/60 p-3 rounded-lg border border-slate-100 dark:border-slate-700">
@@ -99,11 +122,8 @@ export const PromoManager: React.FC = () => {
           <div className="bg-white dark:bg-slate-900 rounded-lg max-w-md w-full shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden max-h-[90vh] flex flex-col my-auto">
             <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">Buat Kupon Diskon Baru</h3>
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-xs"
-              >
-                ✕
+              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer" aria-label="Tutup">
+                <X className="w-4 h-4" />
               </button>
             </div>
 
@@ -139,8 +159,10 @@ export const PromoManager: React.FC = () => {
                   <input
                     type="number"
                     required
+                    min="1"
+                    max={discountType === 'percentage' ? 100 : undefined}
                     value={discountValue}
-                    onChange={(e) => setDiscountValue(Number(e.target.value))}
+                    onChange={(e) => setDiscountValue(Math.max(1, Number(e.target.value) || 1))}
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-slate-800 dark:text-white"
                   />
                 </div>
@@ -148,25 +170,23 @@ export const PromoManager: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Min. Belanja (Rp)
-                  </label>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Min. Belanja (Rp)</label>
                   <input
                     type="number"
+                    min="0"
                     step="10000"
                     value={minPurchase}
-                    onChange={(e) => setMinPurchase(Number(e.target.value))}
+                    onChange={(e) => setMinPurchase(Math.max(0, Number(e.target.value) || 0))}
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-slate-800 dark:text-white"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Kuota Pemakaian
-                  </label>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Kuota Pemakaian</label>
                   <input
                     type="number"
+                    min="1"
                     value={quota}
-                    onChange={(e) => setQuota(Number(e.target.value))}
+                    onChange={(e) => setQuota(Math.max(1, Number(e.target.value) || 1))}
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-mono text-slate-800 dark:text-white"
                   />
                 </div>
@@ -175,7 +195,7 @@ export const PromoManager: React.FC = () => {
               <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Masa Berlaku</label>
                 <input
-                  type="text"
+                  type="date"
                   value={validUntil}
                   onChange={(e) => setValidUntil(e.target.value)}
                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-800 dark:text-white"
@@ -186,15 +206,16 @@ export const PromoManager: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-3 py-1.5 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg font-medium"
+                  className="px-3 py-1.5 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg font-medium cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold rounded-lg shadow-sm"
+                  disabled={isSaving}
+                  className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 text-white font-semibold rounded-lg shadow-sm cursor-pointer"
                 >
-                  Aktifkan Kupon
+                  {isSaving ? 'Menyimpan...' : 'Aktifkan Kupon'}
                 </button>
               </div>
             </form>

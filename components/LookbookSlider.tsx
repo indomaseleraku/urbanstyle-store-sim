@@ -1,49 +1,10 @@
-// components/LookbookSlider.tsx
+﻿// components/LookbookSlider.tsx
 'use client';
 
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, ArrowRight, Sparkles } from 'lucide-react';
 import { getOptimizedImageUrl } from '@/lib/utils';
-
-interface Slide {
-  id: number;
-  tag: string;
-  title: string;
-  subtitle: string;
-  categorySlug: string;
-  bgImage: string;
-  ctaText: string;
-}
-
-const SLIDES: Slide[] = [
-  {
-    id: 1,
-    tag: 'AUTUMN / WINTER 2026 • LIFEWEAR DROP',
-    title: 'Modern Utility Essentials',
-    subtitle: 'Kemeja Flannel Double-Brushed & Celana Ankle Ultra Stretch untuk gaya hidup dinamis kampus dan kerja.',
-    categorySlug: 'kemeja',
-    bgImage: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1280&q=75&fm=webp',
-    ctaText: 'Lihat Koleksi Kemeja',
-  },
-  {
-    id: 2,
-    tag: 'INOVASI TEKNOLOGI TEKSTIL',
-    title: 'AIRism & Heavyweight Cotton',
-    subtitle: 'Siluet Boxy 280 GSM tebal tahan kusut dan polo berpori sejuk yang siap menemani cuaca tropis sepanjang hari.',
-    categorySlug: 'kaos',
-    bgImage: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=1280&q=75&fm=webp',
-    ctaText: 'Belanja Kaos & AIRism',
-  },
-  {
-    id: 3,
-    tag: 'PERLINDUNGAN CUACA RINGAN',
-    title: 'Ultra-Light Outerwear Series',
-    subtitle: 'Jaket Parka Proteksi UV UPF 40+ saku lipat dan French Terry Hoodie katun murni untuk kenyamanan tanpa batas.',
-    categorySlug: 'jaket',
-    bgImage: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=1280&q=75&fm=webp',
-    ctaText: 'Eksplorasi Outerwear',
-  },
-];
+import { LOOKBOOK_SLIDES as SLIDES } from '@/lib/constants/home';
 
 interface LookbookSliderProps {
   onSelectCategory: (slug: string) => void;

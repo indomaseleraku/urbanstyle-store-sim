@@ -15,10 +15,11 @@ import { ProductRelatedSection } from '@/components/product/ProductRelatedSectio
 import { ProductMobileBottomBar } from '@/components/product/ProductMobileBottomBar';
 import { ProductPageModals } from '@/components/product/ProductPageModals';
 import ProductDetailSkeleton from '@/components/product/ProductDetailSkeleton';
-import { dataStore } from '@/lib/store';
+import { useAuth } from '@/lib/auth-context';
 
 export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
+  const { user, openAuthModal } = useAuth();
   const resolvedParams = use(params);
   const productId = Number(resolvedParams.id);
 
@@ -60,7 +61,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         onSelectGender={(g) => router.push(g === 'all' ? '/' : `/?gender=${g}`)}
         searchQuery=""
         onSearchChange={(q) => router.push(`/?search=${encodeURIComponent(q)}`)}
-        cartCount={store.cartItems.reduce((s, it) => s + it.quantity, 0)}
+        cartCount={store.totalCartCount}
         onOpenCart={() => store.setIsCartOpen(true)}
         wishlistCount={store.wishlist.length}
         onOpenWishlist={() => store.setIsWishlistOpen(true)}
@@ -111,7 +112,11 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
               onOpenInfoModal={(t) => store.setActiveInfoModal(t)}
             />
 
-            <ProductPageAccordions product={product} selectedSize={store.selectedSize} />
+            <ProductPageAccordions
+              product={product}
+              selectedSize={store.selectedSize}
+              onReviewAdded={store.refreshProduct}
+            />
           </div>
         </div>
 
@@ -146,46 +151,28 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         isWishlistOpen={store.isWishlistOpen}
         onCloseWishlist={() => store.setIsWishlistOpen(false)}
         wishlist={store.wishlist}
-        onRemoveFromWishlist={(id) => {
-          const p = store.wishlist.find((it) => it.id === id);
-          if (p) dataStore.toggleWishlist(p);
-          store.setWishlist(dataStore.getWishlist());
-        }}
-        onMoveToCart={(p, sz) => {
-          store.setCartItems((prev) => [
-            ...prev,
-            {
-              product: p,
-              selected_size: sz || p.sizes[0] || 'M',
-              selected_color: p.colors[0]?.name || 'Standard',
-              quantity: 1,
-            },
-          ]);
-          store.setIsWishlistOpen(false);
-          store.setIsCartOpen(true);
-        }}
+        onRemoveFromWishlist={store.removeFromWishlist}
+        onMoveToCart={store.handleMoveToCart}
         isCartOpen={store.isCartOpen}
         onCloseCart={() => store.setIsCartOpen(false)}
         cartItems={store.cartItems}
-        onUpdateCartQty={(idx, q) => {
-          store.setCartItems((prev) => {
-            if (q <= 0) return prev.filter((_, i) => i !== idx);
-            const u = [...prev];
-            u[idx].quantity = q;
-            return u;
-          });
-        }}
-        onRemoveCartItem={(idx) => store.setCartItems((prev) => prev.filter((_, i) => i !== idx))}
+        onUpdateCartQty={store.updateCartQty}
+        onRemoveCartItem={store.removeCartItem}
         selectedCourier={store.selectedCourier}
         onSelectCourier={store.setSelectedCourier}
         onOpenCheckout={() => {
+          if (!user) {
+            store.setIsCartOpen(false);
+            openAuthModal();
+            return;
+          }
           store.setIsCartOpen(false);
           store.setIsCheckoutOpen(true);
         }}
         isCheckoutOpen={store.isCheckoutOpen}
         onCloseCheckout={() => store.setIsCheckoutOpen(false)}
         onConfirmOrder={store.handleConfirmOrder}
-        onOrderSuccess={() => store.setCartItems([])}
+        onOrderSuccess={store.clearCart}
         activeInfoModal={store.activeInfoModal}
         onCloseInfoModal={() => store.setActiveInfoModal(null)}
         selectedSize={store.selectedSize}

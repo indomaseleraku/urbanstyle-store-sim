@@ -8,6 +8,7 @@ import React, { useState, useEffect } from 'react';
 import { Download, Copy, Check, QrCode, ShieldCheck, RefreshCw, Zap, Store } from 'lucide-react';
 import { qrisService, QRISResult } from '@/lib/services/qrisService';
 import QRISPaymentNotice from '@/components/qris/QRISPaymentNotice';
+import { copyToClipboard } from '@/lib/utils/clipboard';
 
 interface DynamicQRISCardProps {
   amount: number;
@@ -55,18 +56,18 @@ export const DynamicQRISCard: React.FC<DynamicQRISCardProps> = ({
     };
   }, [amount, orderNumber, merchantName, mode]);
 
-  const handleCopyPayload = () => {
-    if (qrisResult?.rawPayload) {
-      navigator.clipboard.writeText(qrisResult.rawPayload);
+  const handleCopyPayload = async () => {
+    if (qrisResult?.rawPayload && (await copyToClipboard(qrisResult.rawPayload))) {
       setCopiedPayload(true);
       setTimeout(() => setCopiedPayload(false), 2000);
     }
   };
 
-  const handleCopyNominal = () => {
-    navigator.clipboard.writeText(String(amount));
-    setCopiedNominal(true);
-    setTimeout(() => setCopiedNominal(false), 2000);
+  const handleCopyNominal = async () => {
+    if (await copyToClipboard(String(amount))) {
+      setCopiedNominal(true);
+      setTimeout(() => setCopiedNominal(false), 2000);
+    }
   };
 
   const handleDownloadQR = () => {

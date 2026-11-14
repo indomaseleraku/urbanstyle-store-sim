@@ -24,7 +24,7 @@ export const InventoryAuditLog: React.FC<InventoryAuditLogProps> = ({ stockAdjus
           <div key={adj.id} className="py-2.5 flex items-center justify-between">
             <div>
               <p className="font-semibold text-slate-900 dark:text-white">
-                {adj.productName} <span className="font-mono text-slate-500 dark:text-slate-400">({adj.sku})</span>
+                {adj.productName} <span className="font-mono text-slate-500 dark:text-slate-400">({adj.productSku})</span>
               </p>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 Alasan: <strong className="text-slate-700 dark:text-slate-300">{adj.reason}</strong> · Oleh{' '}

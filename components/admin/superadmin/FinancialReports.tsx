@@ -1,120 +1,73 @@
 import React, { useState } from 'react';
 import { useAdminSuite } from '@/lib/admin-suite/AdminSuiteContext';
+import { computeFinanceSummary, FinancePeriod } from '@/lib/admin-suite/financeUtils';
+import { DollarSign, TrendingUp, PieChart } from 'lucide-react';
 import { FinancialPnlCards } from './FinancialPnlCards';
 import { FinancialPnlStatement } from './FinancialPnlStatement';
 import { FinancialCashflowAndBank } from './FinancialCashflowAndBank';
 import { FinancialExpensesTable } from './FinancialExpensesTable';
 
 export const FinancialReports: React.FC = () => {
-  const { orders, expenses } = useAdminSuite();
+  const { orders, expenses, storeSettings } = useAdminSuite();
 
-  const [activeTab, setActiveTab] = useState<'pnl' | 'cashflow' | 'reconciliation' | 'expenses'>('pnl');
-  const [period, setPeriod] = useState<'current_month' | 'q3' | 'ytd'>('current_month');
+  const [period, setPeriod] = useState<FinancePeriod>('ytd');
+  const [activeTab, setActiveTab] = useState<'pnl' | 'cashflow' | 'expenses'>('pnl');
 
-  // Scaled calculations based on period
-  const periodMultiplier = period === 'current_month' ? 1 : period === 'q3' ? 3 : 10;
-
-  const baseRevenue = orders.reduce((acc, curr) => acc + curr.total, 0) + 124500000;
-  const totalRevenue = baseRevenue * (periodMultiplier * 0.75);
-
-  const cogsRate = 0.42; // 42% cost of goods sold
-  const totalCogs = Math.round(totalRevenue * cogsRate);
-  const grossProfit = totalRevenue - totalCogs;
-  const grossMargin = ((grossProfit / totalRevenue) * 100).toFixed(1);
-
-  const totalOpex = expenses.reduce((acc, curr) => acc + curr.amount, 0) * periodMultiplier;
-  const operatingProfit = grossProfit - totalOpex;
-  const taxRate = 0.11; // PPN & PPh corporate estimate
-  const estimatedTax = Math.max(0, Math.round(operatingProfit * taxRate));
-  const netProfit = operatingProfit - estimatedTax;
-  const netMargin = ((netProfit / totalRevenue) * 100).toFixed(1);
+  const ppnRate = storeSettings?.ppnRate ?? 11;
+  const summary = computeFinanceSummary(orders, expenses, period, ppnRate);
 
   return (
     <div className="space-y-4 sm:space-y-5 w-full max-w-full">
-      {/* KPI Cards & Period Selector */}
       <FinancialPnlCards
         period={period}
         setPeriod={setPeriod}
-        totalRevenue={totalRevenue}
-        grossProfit={grossProfit}
-        grossMargin={grossMargin}
-        totalOpex={totalOpex}
-        netProfit={netProfit}
-        netMargin={netMargin}
+        totalRevenue={summary.totalRevenue}
+        grossProfit={summary.grossProfit}
+        grossMargin={summary.grossMargin}
+        totalOpex={summary.totalOpex}
+        netProfit={summary.netProfit}
+        netMargin={summary.netMargin}
       />
 
-      {/* Tabs Navigation */}
-      <div className="border-b border-slate-200 dark:border-slate-800">
-        <div className="flex items-center gap-6 text-xs font-semibold overflow-x-auto pb-1">
-          <button
-            onClick={() => setActiveTab('pnl')}
-            className={`pb-3 transition-colors relative whitespace-nowrap ${
-              activeTab === 'pnl'
-                ? 'text-slate-900 dark:text-white border-b-2 border-slate-900 dark:border-white font-bold'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
-          >
-            Laba Rugi (P&L Income Statement)
-          </button>
-          <button
-            onClick={() => setActiveTab('cashflow')}
-            className={`pb-3 transition-colors relative whitespace-nowrap ${
-              activeTab === 'cashflow'
-                ? 'text-slate-900 dark:text-white border-b-2 border-slate-900 dark:border-white font-bold'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
-          >
-            Laporan Arus Kas (Cash Flow)
-          </button>
-          <button
-            onClick={() => setActiveTab('reconciliation')}
-            className={`pb-3 transition-colors relative whitespace-nowrap ${
-              activeTab === 'reconciliation'
-                ? 'text-slate-900 dark:text-white border-b-2 border-slate-900 dark:border-white font-bold'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
-          >
-            Rekonsiliasi Bank & Gateway
-          </button>
-          <button
-            onClick={() => setActiveTab('expenses')}
-            className={`pb-3 transition-colors relative whitespace-nowrap ${
-              activeTab === 'expenses'
-                ? 'text-slate-900 dark:text-white border-b-2 border-slate-900 dark:border-white font-bold'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
-          >
-            Rincian Beban Operasional ({expenses.length})
-          </button>
-        </div>
+      <div className="border-b border-slate-200 dark:border-slate-800 flex items-center gap-4 text-xs font-medium overflow-x-auto no-scrollbar">
+        <button
+          onClick={() => setActiveTab('pnl')}
+          className={`pb-2.5 px-1 border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+            activeTab === 'pnl'
+              ? 'border-slate-900 dark:border-white text-slate-900 dark:text-white font-bold'
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+          }`}
+        >
+          <PieChart className="w-3.5 h-3.5" />
+          Laba Rugi (Income Statement)
+        </button>
+        <button
+          onClick={() => setActiveTab('cashflow')}
+          className={`pb-2.5 px-1 border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+            activeTab === 'cashflow'
+              ? 'border-slate-900 dark:border-white text-slate-900 dark:text-white font-bold'
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+          }`}
+        >
+          <TrendingUp className="w-3.5 h-3.5" />
+          Arus Kas &amp; Rekonsiliasi Bank
+        </button>
+        <button
+          onClick={() => setActiveTab('expenses')}
+          className={`pb-2.5 px-1 border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+            activeTab === 'expenses'
+              ? 'border-slate-900 dark:border-white text-slate-900 dark:text-white font-bold'
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+          }`}
+        >
+          <DollarSign className="w-3.5 h-3.5" />
+          Buku Biaya Operasional ({summary.periodExpenses.length})
+        </button>
       </div>
 
-      {/* Tab Contents */}
-      {activeTab === 'pnl' && (
-        <FinancialPnlStatement
-          totalRevenue={totalRevenue}
-          totalCogs={totalCogs}
-          grossProfit={grossProfit}
-          grossMargin={grossMargin}
-          totalOpex={totalOpex}
-          operatingProfit={operatingProfit}
-          estimatedTax={estimatedTax}
-          netProfit={netProfit}
-          netMargin={netMargin}
-          periodMultiplier={periodMultiplier}
-        />
-      )}
-
-      {(activeTab === 'cashflow' || activeTab === 'reconciliation') && (
-        <FinancialCashflowAndBank
-          activeTab={activeTab}
-          totalRevenue={totalRevenue}
-          totalCogs={totalCogs}
-          totalOpex={totalOpex}
-        />
-      )}
-
-      {activeTab === 'expenses' && <FinancialExpensesTable />}
+      {activeTab === 'pnl' && <FinancialPnlStatement summary={summary} ppnRate={ppnRate} />}
+      {activeTab === 'cashflow' && <FinancialCashflowAndBank summary={summary} />}
+      {activeTab === 'expenses' && <FinancialExpensesTable expenses={summary.periodExpenses} />}
     </div>
   );
 };

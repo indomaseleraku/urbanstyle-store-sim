@@ -22,12 +22,13 @@ export const OutboundDispatch: React.FC = () => {
   };
 
   const handleDispatch = (order: Order) => {
-    const inputResi = trackingInputs[order.id];
-    const generatedResi =
-      inputResi?.trim() ||
-      `${order.courier.slice(0, 3).toUpperCase()}${Math.floor(1000000000 + Math.random() * 9000000000)}`;
+    const inputResi = trackingInputs[order.id]?.trim();
+    const randomArr = new Uint32Array(1);
+    crypto.getRandomValues(randomArr);
+    const code = String(1000000000 + (randomArr[0] % 8999999999));
+    const generatedResi = inputResi || `${order.courier.slice(0, 3).toUpperCase()}-${code}`;
 
-    updateOrderStatus(order.id, 'shipped', generatedResi);
+    void updateOrderStatus(order.id, 'shipped', generatedResi);
   };
 
   return (
@@ -131,12 +132,6 @@ export const OutboundDispatch: React.FC = () => {
                         ))}
                       </div>
                     </div>
-
-                    {order.notes && (
-                      <p className="text-[11px] text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2 rounded border border-amber-200 dark:border-amber-900/60">
-                        Catatan: {order.notes}
-                      </p>
-                    )}
                   </div>
 
                   {/* Actions & Resi Entry */}

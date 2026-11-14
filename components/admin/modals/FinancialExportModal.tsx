@@ -1,38 +1,47 @@
-// components/admin/modals/FinancialExportModal.tsx
 'use client';
 
 import React, { useState } from 'react';
 import { useAdminSuite } from '@/lib/admin-suite/AdminSuiteContext';
+import { computeFinanceSummary, FinancePeriod, STANDARD_COGS_RATIO } from '@/lib/admin-suite/financeUtils';
 import { X, Download, FileText, CheckCircle2, Printer } from 'lucide-react';
 
 export const FinancialExportModal: React.FC = () => {
-  const { isFinanceExportOpen, setIsFinanceExportOpen, expenses } = useAdminSuite();
+  const { isFinanceExportOpen, setIsFinanceExportOpen, orders, expenses, storeSettings } = useAdminSuite();
 
   const [format, setFormat] = useState<'csv' | 'pdf'>('csv');
+  const [period, setPeriod] = useState<FinancePeriod>('ytd');
   const [downloadSuccess, setDownloadSuccess] = useState(false);
 
   if (!isFinanceExportOpen) return null;
 
+  const ppnRate = storeSettings?.ppnRate ?? 11;
+
   const handleDownload = () => {
     if (format === 'csv') {
+      const summary = computeFinanceSummary(orders, expenses, period, ppnRate);
+      const periodLabel =
+        period === 'current_month' ? 'Bulan Ini' : period === 'q3' ? '90 Hari Terakhir' : 'Year-to-Date (YTD)';
+      const dateTag = new Date().toISOString().slice(0, 10);
+
       let csvContent = 'data:text/csv;charset=utf-8,';
       csvContent += 'LAPORAN KEUANGAN URBANSTYLE LIFEWEAR ECOMMERCE\n';
-      csvContent += 'Periode: Oktober 2026\n\n';
+      csvContent += `Periode: ${periodLabel} (${new Date().getFullYear()})\n\n`;
       csvContent += 'KATEGORI,DESKRIPSI,JUMLAH_RP\n';
-      csvContent += 'Pendapatan,Penjualan Online Bersih,168500000\n';
-      csvContent += 'HPP,Biaya Produksi & Bahan Baku,-70770000\n';
-      csvContent += 'Laba Kotor,Gross Profit,97730000\n';
-      
-      expenses.forEach(e => {
-        csvContent += `Beban Operasional,${e.category} - ${e.description},-${e.amount}\n`;
+      csvContent += `Pendapatan,Penjualan Online Bersih (${summary.realizedOrders.length} Transaksi),${summary.totalRevenue}\n`;
+      csvContent += `HPP,Estimasi HPP & Bahan Baku (${Math.round(STANDARD_COGS_RATIO * 100)}%),-${summary.totalCogs}\n`;
+      csvContent += `Laba Kotor,Gross Profit,${summary.grossProfit}\n`;
+
+      summary.periodExpenses.forEach((e) => {
+        csvContent += `Beban Operasional,"${e.category} - ${String(e.description).replace(/"/g, '""')}",-${e.amount}\n`;
       });
-      
-      csvContent += 'Laba Bersih,Net Profit Setelah Pajak,32450000\n';
+
+      csvContent += `Pajak,Estimasi PPN & Pajak (${ppnRate}%),-${summary.estimatedTax}\n`;
+      csvContent += `Laba Bersih,Net Profit Setelah Pajak,${summary.netProfit}\n`;
 
       const encodedUri = encodeURI(csvContent);
       const link = document.createElement('a');
       link.setAttribute('href', encodedUri);
-      link.setAttribute('download', `UrbanStyle_Laporan_Keuangan_Okt2026.csv`);
+      link.setAttribute('download', `UrbanStyle_Laporan_Keuangan_${period}_${dateTag}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -62,6 +71,19 @@ export const FinancialExportModal: React.FC = () => {
         </div>
 
         <div className="p-5 space-y-4 text-xs text-slate-800 dark:text-slate-200">
+          <div>
+            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Periode Data</label>
+            <select
+              value={period}
+              onChange={(e) => setPeriod(e.target.value as FinancePeriod)}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-800 dark:text-white"
+            >
+              <option value="current_month">Bulan Berjalan</option>
+              <option value="q3">90 Hari Terakhir</option>
+              <option value="ytd">Sepanjang Tahun (YTD)</option>
+            </select>
+          </div>
+
           <div>
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-2">Pilih Format Berkas</label>
             <div className="grid grid-cols-2 gap-2">
@@ -95,10 +117,9 @@ export const FinancialExportModal: React.FC = () => {
 
           <div className="bg-slate-50 dark:bg-slate-800/70 p-3 rounded-lg border border-slate-100 dark:border-slate-700 space-y-1 text-slate-600 dark:text-slate-300">
             <p className="font-semibold text-slate-800 dark:text-slate-200">Cakupan Data yang Diexport:</p>
-            <p>· Laporan Laba Rugi (P&L Income Statement)</p>
-            <p>· Rincian HPP (COGS) & Beban Operasional Usaha</p>
-            <p>· Rekonsiliasi Saldo Bank BCA & Mandiri</p>
-            <p>· Estimasi Pajak Terutang (PPN 11%)</p>
+            <p>· Laporan Laba Rugi (P&amp;L Income Statement)</p>
+            <p>· Rincian HPP ({Math.round(STANDARD_COGS_RATIO * 100)}%) &amp; Beban Operasional Usaha</p>
+            <p>· Estimasi Pajak Terutang (PPN {ppnRate}%)</p>
           </div>
 
           {downloadSuccess && (

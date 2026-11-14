@@ -1,156 +1,137 @@
 import React from 'react';
-import { CheckCircle2, Landmark } from 'lucide-react';
+import { CheckCircle2, Landmark, CreditCard, Banknote } from 'lucide-react';
 import { useAdminSuite } from '@/lib/admin-suite/AdminSuiteContext';
+import { computeFinanceSummary } from '@/lib/admin-suite/financeUtils';
 
 interface FinancialCashflowAndBankProps {
-  activeTab: 'cashflow' | 'reconciliation';
-  totalRevenue: number;
-  totalCogs: number;
-  totalOpex: number;
+  summary: ReturnType<typeof computeFinanceSummary>;
 }
 
-export const FinancialCashflowAndBank: React.FC<FinancialCashflowAndBankProps> = ({
-  activeTab,
-  totalRevenue,
-  totalCogs,
-  totalOpex,
-}) => {
+export const FinancialCashflowAndBank: React.FC<FinancialCashflowAndBankProps> = ({ summary }) => {
   const { formatRupiah } = useAdminSuite();
+  const { realizedOrders, totalRevenue, totalOpex } = summary;
 
-  if (activeTab === 'cashflow') {
-    return (
-      <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm p-5 space-y-6 transition-colors">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
-          <div>
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white">Laporan Arus Kas (Cash Flow Statement)</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Pencatatan kas masuk dan kas keluar aktual</p>
-          </div>
-          <span className="text-xs font-mono text-slate-500 dark:text-slate-400">Metode Langsung</span>
-        </div>
+  let bcaTotal = 0;
+  let mandiriTotal = 0;
+  let qrisTotal = 0;
+  let cardCodTotal = 0;
 
-        <div className="space-y-4 text-xs">
-          {/* Cash flow from Operations */}
-          <div className="border border-slate-200 dark:border-slate-800 rounded-lg p-4 bg-slate-50/50 dark:bg-slate-800/40">
-            <h3 className="font-bold text-slate-900 dark:text-white mb-2">Arus Kas dari Aktivitas Operasional</h3>
-            <div className="space-y-2">
-              <div className="flex justify-between text-slate-600 dark:text-slate-300">
-                <span>Penerimaan Kas dari Penjualan Pelanggan</span>
-                <span className="text-emerald-700 dark:text-emerald-400 font-mono font-medium">+{formatRupiah(totalRevenue * 0.98)}</span>
-              </div>
-              <div className="flex justify-between text-slate-600 dark:text-slate-300">
-                <span>Pembayaran Kas ke Pemasok Bahan Baku</span>
-                <span className="text-rose-700 dark:text-rose-400 font-mono font-medium">-{formatRupiah(totalCogs * 0.92)}</span>
-              </div>
-              <div className="flex justify-between text-slate-600 dark:text-slate-300">
-                <span>Pembayaran Gaji dan Beban Operasional</span>
-                <span className="text-rose-700 dark:text-rose-400 font-mono font-medium">-{formatRupiah(totalOpex)}</span>
-              </div>
-              <div className="flex justify-between text-slate-900 dark:text-white font-bold border-t border-slate-200 dark:border-slate-700 pt-2">
-                <span>Arus Kas Bersih dari Operasional</span>
-                <span className="text-emerald-800 dark:text-emerald-300 font-mono">+{formatRupiah(totalRevenue * 0.98 - totalCogs * 0.92 - totalOpex)}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Cash flow from Investments */}
-          <div className="border border-slate-200 dark:border-slate-800 rounded-lg p-4 bg-slate-50/50 dark:bg-slate-800/40">
-            <h3 className="font-bold text-slate-900 dark:text-white mb-2">Arus Kas dari Aktivitas Investasi</h3>
-            <div className="space-y-2">
-              <div className="flex justify-between text-slate-600 dark:text-slate-300">
-                <span>Pengadaan Rak Heavy Duty & Scanner Barcode Gudang</span>
-                <span className="text-rose-700 dark:text-rose-400 font-mono font-medium">-{formatRupiah(8500000)}</span>
-              </div>
-              <div className="flex justify-between text-slate-900 dark:text-white font-bold border-t border-slate-200 dark:border-slate-700 pt-2">
-                <span>Arus Kas Bersih dari Investasi</span>
-                <span className="text-rose-700 dark:text-rose-400 font-mono">-{formatRupiah(8500000)}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Closing balance */}
-          <div className="p-4 bg-slate-900 dark:bg-slate-800 text-white rounded-lg flex items-center justify-between border border-slate-800 dark:border-slate-700">
-            <div>
-              <p className="font-bold text-sm">Total Saldo Kas Likuid Tersedia</p>
-              <p className="text-xs text-slate-400">Total simpanan giro BCA, Mandiri & Settlement Gateway</p>
-            </div>
-            <div className="text-right">
-              <span className="text-lg font-bold font-mono text-amber-400">
-                {formatRupiah(255550000)}
-              </span>
-              <span className="block text-[11px] text-slate-400">Audit Status: Reconciled</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+  for (const o of realizedOrders) {
+    const pm = (o.paymentMethod || '').toLowerCase();
+    const amt = Number(o.total || 0);
+    if (pm.includes('bca')) bcaTotal += amt;
+    else if (pm.includes('mandiri')) mandiriTotal += amt;
+    else if (pm.includes('qris')) qrisTotal += amt;
+    else cardCodTotal += amt;
   }
 
-  // Reconciliation tab
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs">
+          <span className="text-xs text-slate-500 dark:text-slate-400">Arus Kas Masuk (Cash Inflow)</span>
+          <div className="text-lg font-bold text-emerald-700 dark:text-emerald-400 font-mono mt-1">
+            +{formatRupiah(totalRevenue)}
+          </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+            Dari {realizedOrders.length} transaksi valid pada periode terpilih
+          </p>
+        </div>
+
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs">
+          <span className="text-xs text-slate-500 dark:text-slate-400">Arus Kas Keluar (OPEX Aktual)</span>
+          <div className="text-lg font-bold text-rose-700 dark:text-rose-400 font-mono mt-1">
+            -{formatRupiah(totalOpex)}
+          </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+            Beban operasional tercatat pada periode terpilih
+          </p>
+        </div>
+
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs">
+          <span className="text-xs text-slate-500 dark:text-slate-400">Selisih Kas Operasional</span>
+          <div className="text-lg font-bold text-slate-900 dark:text-white font-mono mt-1">
+            {formatRupiah(totalRevenue - totalOpex)}
+          </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+            Cash-in dikurangi OPEX (sebelum HPP &amp; pajak)
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 flex items-center justify-center font-bold text-sm">
+            <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 flex items-center justify-center font-bold text-xs">
               BCA
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-900 dark:text-white">BCA Giro Bisnis</p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">Rek: 8820-192-881</p>
+              <p className="text-xs font-bold text-slate-900 dark:text-white">Bank BCA</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Transfer Bank BCA</p>
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">
-            <span className="text-xs text-slate-500 dark:text-slate-400">Saldo Giro Aktif:</span>
-            <div className="text-base font-bold text-slate-900 dark:text-white font-mono mt-0.5">
-              {formatRupiah(142500000)}
-            </div>
-            <div className="flex items-center gap-1 mt-2 text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">
+            <div className="text-sm font-bold text-slate-900 dark:text-white font-mono">{formatRupiah(bcaTotal)}</div>
+            <div className="flex items-center gap-1 mt-1.5 text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">
               <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Klop dengan mutasi sistem</span>
+              <span>Rekonsiliasi live DB</span>
             </div>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 flex items-center justify-center font-bold text-sm">
+            <div className="w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 flex items-center justify-center font-bold text-xs">
               MDR
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-900 dark:text-white">Mandiri Corporate</p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">Rek: 137-00-9812-44</p>
+              <p className="text-xs font-bold text-slate-900 dark:text-white">Bank Mandiri</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Transfer Bank Mandiri</p>
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">
-            <span className="text-xs text-slate-500 dark:text-slate-400">Saldo Giro Aktif:</span>
-            <div className="text-base font-bold text-slate-900 dark:text-white font-mono mt-0.5">
-              {formatRupiah(88200000)}
-            </div>
-            <div className="flex items-center gap-1 mt-2 text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">
+            <div className="text-sm font-bold text-slate-900 dark:text-white font-mono">{formatRupiah(mandiriTotal)}</div>
+            <div className="flex items-center gap-1 mt-1.5 text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">
               <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Klop dengan mutasi sistem</span>
+              <span>Rekonsiliasi live DB</span>
             </div>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 flex items-center justify-center font-bold text-sm">
+            <div className="w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 flex items-center justify-center font-bold text-xs">
               QRIS
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-900 dark:text-white">Midtrans Gateway</p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">QRIS & Virtual Account</p>
+              <p className="text-xs font-bold text-slate-900 dark:text-white">QRIS Instant</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Settlement QRIS</p>
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">
-            <span className="text-xs text-slate-500 dark:text-slate-400">Saldo Escrow Belum Cair:</span>
-            <div className="text-base font-bold text-slate-900 dark:text-white font-mono mt-0.5">
-              {formatRupiah(24850000)}
-            </div>
-            <div className="flex items-center gap-1 mt-2 text-[11px] text-blue-700 dark:text-blue-400 font-medium">
+            <div className="text-sm font-bold text-slate-900 dark:text-white font-mono">{formatRupiah(qrisTotal)}</div>
+            <div className="flex items-center gap-1 mt-1.5 text-[11px] text-blue-700 dark:text-blue-400 font-medium">
               <Landmark className="w-3.5 h-3.5" />
-              <span>Pencairan otomatis pukul 10:00 WIB</span>
+              <span>Webhook QRIS Realtime</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center">
+              <CreditCard className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-900 dark:text-white">Kartu Kredit &amp; COD</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Terpisah dari QRIS</p>
+            </div>
+          </div>
+          <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <div className="text-sm font-bold text-slate-900 dark:text-white font-mono">{formatRupiah(cardCodTotal)}</div>
+            <div className="flex items-center gap-1 mt-1.5 text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+              <Banknote className="w-3.5 h-3.5" />
+              <span>Pembayaran Non-Transfer/QRIS</span>
             </div>
           </div>
         </div>

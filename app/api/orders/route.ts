@@ -1,32 +1,26 @@
 // app/api/orders/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
 import { dataStore } from '@/lib/store';
-import { verifySessionToken } from '@/lib/services/cryptoSession';
+import { getRequestSession, STAFF_ROLES } from '@/lib/services/sessionServerHelper';
 
 export async function GET(request: NextRequest) {
   try {
-    // 1. Proteksi Keamanan PII: Validasi hak akses sebelum mengembalikan data pesanan
-    const token = request.cookies.get('urbanstyle_session_token')?.value ||
-      request.headers.get('authorization')?.replace('Bearer ', '');
-
-    const session = await verifySessionToken(token);
-
+    const session = await getRequestSession(request);
     if (!session.valid || !session.userId || !session.role) {
       return NextResponse.json(
-        { 
-          success: false, 
-          message: 'Akses ditolak: Autentikasi sesi sah diperlukan untuk mengakses riwayat transaksi.' 
+        {
+          success: false,
+          message: 'Akses ditolak: Autentikasi sesi sah diperlukan untuk mengakses riwayat transaksi.',
         },
         { status: 401 }
       );
     }
 
-    const isStaff = ['admin', 'owner', 'gudang', 'kasir'].includes(session.role);
+    const isStaff = STAFF_ROLES.includes(session.role as (typeof STAFF_ROLES)[number]);
+    const mineOnly = request.nextUrl.searchParams.get('mine') === '1';
 
-    // Staf berhak melihat semua pesanan, pelanggan hanya berhak melihat pesanan miliknya sendiri
-    const orders = isStaff 
-      ? await dataStore.getOrders() 
-      : await dataStore.getOrders(session.userId);
+    const orders =
+      isStaff && !mineOnly ? await dataStore.getOrders() : await dataStore.getOrders(session.userId);
 
     return NextResponse.json({
       success: true,
@@ -34,21 +28,15 @@ export async function GET(request: NextRequest) {
       data: orders,
       timestamp: new Date().toISOString(),
     });
-  } catch (error: any) {
-    return NextResponse.json(
-      { success: false, message: error.message || 'Gagal memuat daftar pesanan' },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Gagal memuat daftar pesanan';
+    return NextResponse.json({ success: false, message: msg }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    // Auth guard: wajib session token valid untuk membuat pesanan
-    const token =
-      request.cookies.get('urbanstyle_session_token')?.value ||
-      request.headers.get('authorization')?.replace('Bearer ', '');
-    const session = await verifySessionToken(token);
+    const session = await getRequestSession(request);
     if (!session.valid || !session.userId) {
       return NextResponse.json(
         { success: false, message: 'Akses ditolak: Sesi pengguna tidak valid. Silakan login terlebih dahulu.' },
@@ -58,7 +46,6 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    // Validasi payload
     if (!body.customer_name || !body.customer_phone || !body.customer_address || !body.cart_items) {
       return NextResponse.json(
         { success: false, message: 'Payload tidak lengkap. Nama, telepon, alamat, dan item keranjang wajib diisi.' },
@@ -66,7 +53,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await dataStore.createOrder({ ...body, user_id: body.user_id || session.userId });
+    const result = await dataStore.createOrder({ ...body, user_id: session.userId });
 
     if (!result.success) {
       return NextResponse.json(

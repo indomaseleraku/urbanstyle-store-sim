@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ArrowRight } from 'lucide-react';
+import { X, ArrowRight, Flame } from 'lucide-react';
 
 interface MobileCategorySheetProps {
   isOpen: boolean;
@@ -21,7 +21,7 @@ const CATEGORY_ITEMS = [
   { name: 'Kaos & AIRism', slug: 'kaos', desc: 'Katun heavyweight 280 GSM & serat sejuk bernapas' },
   { name: 'Celana Chino & Ankle', slug: 'celana', desc: 'Ultra Stretch fleksibel & siluet santai harian' },
   { name: 'Jaket & Outerwear', slug: 'jaket', desc: 'Parka proteksi UV saku lipat & French Terry Hoodie' },
-  { name: 'Limited Offer 🔥', slug: 'sale', desc: 'Penawaran potongan harga khusus minggu ini' },
+  { name: 'Limited Offer', slug: 'sale', desc: 'Penawaran potongan harga khusus minggu ini' },
 ];
 
 export default function MobileCategorySheet({
@@ -133,6 +133,7 @@ export default function MobileCategorySheet({
                         >
                           {c.name}
                         </span>
+                        {c.slug === 'sale' && <Flame size={13} className="text-[#E60012]" aria-hidden="true" />}
                         {isSelected && (
                           <span className="text-[9px] bg-zinc-950 text-white font-mono uppercase px-1.5 py-0.2">
                             AKTIF

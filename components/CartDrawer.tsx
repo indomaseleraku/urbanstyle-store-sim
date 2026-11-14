@@ -7,6 +7,9 @@ import CartDrawerItem from '@/components/cart/CartDrawerItem';
 import CartReservationTimer from '@/components/cart/CartReservationTimer';
 import { X, ArrowRight, Truck, ShoppingBag, Lock } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
+import { COURIERS, FREE_SHIPPING_THRESHOLD } from '@/lib/constants/shipping';
+
+export { COURIERS, FREE_SHIPPING_THRESHOLD };
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -18,14 +21,6 @@ interface CartDrawerProps {
   selectedCourier: string;
   onSelectCourier: (courier: string) => void;
 }
-
-export const COURIERS = [
-  { name: 'J&T Express (Reguler)', price: 15000, eta: '1-2 Hari' },
-  { name: 'JNE Reguler', price: 18000, eta: '1-3 Hari' },
-  { name: 'SiCepat Halu', price: 16000, eta: '1-2 Hari' },
-];
-
-export const FREE_SHIPPING_THRESHOLD = 400000;
 
 export default function CartDrawer({
   isOpen,

@@ -2,6 +2,7 @@
 'use client';
 
 import React from 'react';
+import { Flame } from 'lucide-react';
 import { GENDER_TABS } from '@/lib/constants/navigation';
 
 interface DepartmentTabsProps {
@@ -24,7 +25,7 @@ export default function DepartmentTabs({
           const isActive = tab.value === 'sale'
             ? selectedCategory === 'sale'
             : selectedGender === tab.value && selectedCategory !== 'sale';
-          const label = tab.label.replace(' 🔥', '');
+          const label = tab.label;
           return (
             <button
               key={tab.value}
@@ -41,7 +42,7 @@ export default function DepartmentTabs({
               }`}
             >
               <span>{label}</span>
-              {tab.highlight && <span className="ml-1 text-[10px]">🔥</span>}
+              {tab.highlight && <Flame size={12} className="ml-1 shrink-0" aria-hidden="true" />}
             </button>
           );
         })}
@@ -55,7 +56,7 @@ export default function DepartmentTabs({
         const isActive = tab.value === 'sale'
           ? selectedCategory === 'sale'
           : selectedGender === tab.value && selectedCategory !== 'sale';
-        const label = tab.label.replace(' 🔥', '');
+        const label = tab.label;
         return (
           <button
             key={tab.value}
@@ -68,7 +69,7 @@ export default function DepartmentTabs({
             }`}
           >
             <span>{label}</span>
-            {tab.highlight && <span className="ml-1 text-[11px]">🔥</span>}
+            {tab.highlight && <Flame size={13} className="ml-1 shrink-0" aria-hidden="true" />}
             {isActive && (
               <span className={`absolute bottom-0 left-0 right-0 h-[2.5px] ${tab.highlight ? 'bg-[#E60012]' : 'bg-zinc-950'}`} />
             )}

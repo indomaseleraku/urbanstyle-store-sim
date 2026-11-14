@@ -3,12 +3,10 @@
 // No plaintext password comparison happens on the client side.
 
 import { UserProfile } from '../types';
-import { INITIAL_USERS } from '../mock-data';
 import { setAuthCookies } from './authCookieService';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 
 const SESSION_KEY = 'urbanstyle_session';
-const REGISTERED_KEY = 'urbanstyle_registered_users';
 
 // ─── Session Persistence ────────────────────────────────────────────────────
 
@@ -29,41 +27,60 @@ export async function persistUserSession(user: UserProfile | null, token?: strin
   } else {
     localStorage.removeItem(SESSION_KEY);
   }
-  await setAuthCookies(user, token);
+  await setAuthCookies(user);
 }
 
 
 // ─── Registration — delegates to /api/auth/register (bcrypt on server) ─────
 
-export async function saveRegisteredCredential(user: UserProfile, password: string): Promise<void> {
-  saveLocalRegisteredUser(user);
-
+export async function saveRegisteredCredential(
+  user: UserProfile,
+  password: string
+): Promise<{ success: boolean; user?: UserProfile; token?: string; message?: string }> {
   if (typeof window === 'undefined') {
     try {
       const { supabaseAdmin } = await import('../supabaseAdmin');
       const bcrypt = (await import('bcryptjs')).default;
       const cleanEmail = user.email.toLowerCase().trim();
       const hash = await bcrypt.hash(password.trim(), 12);
-      await supabaseAdmin.from('user_credentials').upsert(
-        {
-          email: cleanEmail,
-          password_hash: hash,
-          role: user.role || 'customer',
-          full_name: user.full_name,
-          phone: user.phone || null,
-          preferred_size: user.preferred_size || 'M',
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'email' }
-      );
+      const { data, error } = await supabaseAdmin
+        .from('user_credentials')
+        .upsert(
+          {
+            email: cleanEmail,
+            password_hash: hash,
+            role: user.role || 'customer',
+            full_name: user.full_name,
+            phone: user.phone || null,
+            preferred_size: user.preferred_size || 'M',
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'email' }
+        )
+        .select('id, email, full_name, role, preferred_size, created_at')
+        .maybeSingle();
+      if (!error && data) {
+        return {
+          success: true,
+          user: {
+            id: data.id,
+            email: data.email,
+            full_name: data.full_name,
+            role: data.role,
+            preferred_size: data.preferred_size || 'M',
+            created_at: data.created_at,
+          },
+        };
+      }
+      return { success: false, message: error?.message || 'Gagal menyimpan akun ke database.' };
     } catch (err) {
       console.warn('Server credential save error:', err);
+      return { success: false, message: 'Gagal menyimpan akun ke server.' };
     }
-    return;
   }
 
   try {
-    await fetch('/api/auth/register', {
+    const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -74,8 +91,17 @@ export async function saveRegisteredCredential(user: UserProfile, password: stri
         phone: user.phone || null,
       }),
     });
+    const data = await res.json();
+    if (res.ok && data?.success && data.user) {
+      return { success: true, user: data.user as UserProfile, token: data.token };
+    }
+    return {
+      success: false,
+      message: data?.message || 'Pendaftaran gagal. Silakan periksa kembali data Anda.',
+    };
   } catch (err) {
     console.warn('Register API call failed:', err);
+    return { success: false, message: 'Gagal terhubung ke server pendaftaran.' };
   }
 }
 
@@ -245,45 +271,37 @@ export async function authenticateStaff(
   }
 }
 
-// ─── Local User Utilities ───────────────────────────────────────────────────
-
-export function resolveMemberUser(cleanEmail: string): UserProfile | null {
-  const found = INITIAL_USERS.find((u) => u.email.toLowerCase() === cleanEmail);
-  return found || findLocalRegisteredUser(cleanEmail);
-}
-
-export function findLocalRegisteredUser(cleanEmail: string): UserProfile | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = localStorage.getItem(REGISTERED_KEY);
-    if (!raw) return null;
-    const users: UserProfile[] = JSON.parse(raw);
-    return users.find((u) => u.email.toLowerCase() === cleanEmail) || null;
-  } catch {
-    return null;
-  }
-}
-
-export function saveLocalRegisteredUser(user: UserProfile): void {
-  if (typeof window === 'undefined') return;
-  try {
-    const raw = localStorage.getItem(REGISTERED_KEY);
-    const users: UserProfile[] = raw ? JSON.parse(raw) : [];
-    const exists = users.some((u) => u.email.toLowerCase() === user.email.toLowerCase());
-    if (!exists) {
-      users.push(user);
-      localStorage.setItem(REGISTERED_KEY, JSON.stringify(users));
-    }
-  } catch {}
-}
-
 // ─── Google OAuth ───────────────────────────────────────────────────────────
 
 export async function resolveOrCreateGoogleUser(
   googleEmail: string,
-  googleName: string
-): Promise<UserProfile> {
+  googleName: string,
+  accessToken?: string
+): Promise<{ success: boolean; user?: UserProfile; token?: string; message?: string }> {
   const cleanEmail = googleEmail.toLowerCase().trim();
+
+  if (typeof window !== 'undefined') {
+    if (!accessToken) {
+      return { success: false, message: 'Token autentikasi Google tidak tersedia.' };
+    }
+    try {
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken, email: cleanEmail, name: googleName }),
+      });
+      const data = await res.json();
+      if (res.ok && data?.success && data.user) {
+        return { success: true, user: data.user as UserProfile };
+      }
+      return {
+        success: false,
+        message: data?.message || 'Gagal memproses akun Google di server.',
+      };
+    } catch {
+      return { success: false, message: 'Gagal terhubung ke layanan autentikasi Google.' };
+    }
+  }
 
   if (isSupabaseConfigured && supabase) {
     try {
@@ -294,34 +312,23 @@ export async function resolveOrCreateGoogleUser(
         .maybeSingle();
       if (data) {
         return {
-          id: data.id,
-          email: data.email || cleanEmail,
-          full_name: data.full_name || googleName,
-          role: (data.role as UserProfile['role']) || 'customer',
-          phone: data.phone || undefined,
-          address_line: data.address_line || undefined,
-          city: data.city || undefined,
-          postal_code: data.postal_code || undefined,
-          preferred_size: data.preferred_size || 'M',
-          created_at: data.created_at,
+          success: true,
+          user: {
+            id: data.id,
+            email: data.email || cleanEmail,
+            full_name: data.full_name || googleName,
+            role: (data.role as UserProfile['role']) || 'customer',
+            phone: data.phone || undefined,
+            address_line: data.address_line || undefined,
+            city: data.city || undefined,
+            postal_code: data.postal_code || undefined,
+            preferred_size: data.preferred_size || 'M',
+            created_at: data.created_at,
+          },
         };
       }
     } catch {}
   }
 
-  const existing =
-    INITIAL_USERS.find((u) => u.email.toLowerCase() === cleanEmail) ||
-    findLocalRegisteredUser(cleanEmail);
-  if (existing) return existing;
-
-  const newProfile: UserProfile = {
-    id: `usr_google_${Date.now()}`,
-    email: cleanEmail,
-    full_name: googleName.trim() || cleanEmail.split('@')[0].toUpperCase(),
-    role: 'customer',
-    preferred_size: 'L',
-    created_at: new Date().toISOString(),
-  };
-  saveLocalRegisteredUser(newProfile);
-  return newProfile;
+  return { success: false, message: 'Akun Google tidak dapat disinkronkan saat ini.' };
 }

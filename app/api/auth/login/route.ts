@@ -1,16 +1,18 @@
 // app/api/auth/login/route.ts
-// Server-side Login Endpoint dengan bcrypt.compare
-// Menggantikan plaintext comparison di client-side authStorageService
+// Server-side Login Endpoint dengan bcrypt.compare + verifikasi status aktif staf
 
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { checkRateLimit, LOGIN_RATE_LIMIT, getClientIp } from '@/lib/services/rateLimiter';
-
-const STAFF_ROLES = ['admin', 'owner', 'gudang', 'kasir'] as const;
+import {
+  STAFF_ROLES,
+  constantTimeStringEqual,
+  applySessionCookieToResponse,
+} from '@/lib/services/sessionServerHelper';
+import { createSessionToken } from '@/lib/services/cryptoSession';
 
 export async function POST(req: NextRequest) {
-  // — Rate limiting —
   const ip = getClientIp(req);
   const rl = checkRateLimit(`login:${ip}`, LOGIN_RATE_LIMIT);
   if (!rl.allowed) {
@@ -35,7 +37,6 @@ export async function POST(req: NextRequest) {
     const rawPass = String(body.password || '').trim();
     const staffOnly = body.staff_only === true;
 
-    // — Validasi input —
     if (!rawEmail || !rawEmail.includes('@')) {
       return NextResponse.json(
         { success: false, message: 'Format alamat email tidak valid.' },
@@ -49,7 +50,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // — Ambil record dari Supabase —
     const { data, error } = await supabaseAdmin
       .from('user_credentials')
       .select('id, email, full_name, role, phone, preferred_size, password_hash, created_at')
@@ -65,26 +65,25 @@ export async function POST(req: NextRequest) {
 
     if (!data) {
       return NextResponse.json(
-        { success: false, message: 'Alamat email belum terdaftar. Silakan pilih tab Daftar Akun.' },
+        { success: false, message: 'Email atau kata sandi tidak valid.' },
         { status: 401 }
       );
     }
 
-    // — Validasi role untuk staff-only portal —
-    if (staffOnly && !STAFF_ROLES.includes(data.role as typeof STAFF_ROLES[number])) {
+    const isStaffAccount = STAFF_ROLES.includes(data.role as (typeof STAFF_ROLES)[number]);
+    if (staffOnly && !isStaffAccount) {
       return NextResponse.json(
         { success: false, message: 'Akses ditolak: Akun tidak terdaftar sebagai staf internal.' },
         { status: 403 }
       );
     }
 
-    // — Verifikasi password dengan bcrypt —
-    const isLegacyPlaintext = !data.password_hash.startsWith('$2');
-    let passwordValid: boolean;
+    // Cek verifikasi password terlebih dahulu sebelum membuka info akun staf nonaktif
+    const isLegacyPlaintext = !String(data.password_hash || '').startsWith('$2');
+    let passwordValid = false;
 
     if (isLegacyPlaintext) {
-      // Akun lama dengan plaintext — bandingkan lalu upgrade hash on-the-fly
-      passwordValid = data.password_hash === rawPass;
+      passwordValid = constantTimeStringEqual(String(data.password_hash || ''), rawPass);
       if (passwordValid) {
         const newHash = await bcrypt.hash(rawPass, 12);
         await supabaseAdmin
@@ -93,37 +92,42 @@ export async function POST(req: NextRequest) {
           .eq('id', data.id);
       }
     } else {
-      // Akun dengan bcrypt hash
-      passwordValid = await bcrypt.compare(rawPass, data.password_hash);
+      passwordValid = await bcrypt.compare(rawPass, String(data.password_hash));
     }
 
     if (!passwordValid) {
       return NextResponse.json(
-        { success: false, message: 'Kata sandi salah. Silakan periksa kembali atau gunakan Lupa Kata Sandi.' },
+        { success: false, message: 'Email atau kata sandi tidak valid.' },
         { status: 401 }
       );
     }
 
-    // — Update last_login di staff_users jika staff —
-    if (STAFF_ROLES.includes(data.role as typeof STAFF_ROLES[number])) {
+    let effectiveRole = data.role;
+    if (isStaffAccount) {
+      const { data: staffRow, error: staffErr } = await supabaseAdmin
+        .from('staff_users')
+        .select('id, role, is_active, status')
+        .eq('email', rawEmail)
+        .maybeSingle();
+
+      if (staffErr || !staffRow || staffRow.is_active === false || staffRow.status === 'inactive') {
+        return NextResponse.json(
+          { success: false, message: 'Akses ditolak: Akun staf ini telah dinonaktifkan.' },
+          { status: 403 }
+        );
+      }
+
+      if (staffRow.role) {
+        effectiveRole = staffRow.role === 'admin' ? 'owner' : staffRow.role;
+      }
+
       await supabaseAdmin
         .from('staff_users')
         .update({ last_login: new Date().toISOString() })
-        .eq('email', rawEmail);
+        .eq('id', staffRow.id);
     }
 
-    // — Buat signed session token di server (HMAC-SHA256) —
-    const { createSessionToken } = await import('@/lib/services/cryptoSession');
-    const token = await createSessionToken(data.id, data.role);
-
-    const isSecure = process.env.NODE_ENV === 'production';
-    const cookieOpts = {
-      path: '/',
-      maxAge: 7 * 24 * 60 * 60,
-      sameSite: 'lax' as const,
-      httpOnly: false,
-      secure: isSecure,
-    };
+    const token = await createSessionToken(data.id, effectiveRole);
 
     const response = NextResponse.json({
       success: true,
@@ -131,23 +135,17 @@ export async function POST(req: NextRequest) {
         id: data.id,
         email: data.email,
         full_name: data.full_name,
-        role: data.role,
-        staff_role: data.role === 'admin' ? 'owner' : data.role,
+        role: effectiveRole,
+        staff_role: isStaffAccount ? (effectiveRole === 'admin' ? 'owner' : effectiveRole) : undefined,
         phone: data.phone ?? undefined,
         preferred_size: data.preferred_size ?? 'M',
         created_at: data.created_at,
       },
-      token,
     });
 
-    response.cookies.set('urbanstyle_session_token', token, cookieOpts);
-    response.cookies.set('urbanstyle_auth_user', data.id, cookieOpts);
-    response.cookies.set('urbanstyle_auth_role', data.role, cookieOpts);
-
-    return response;
+    return applySessionCookieToResponse(response, data.id, effectiveRole, token);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Terjadi kesalahan server.';
     return NextResponse.json({ success: false, message: msg }, { status: 500 });
   }
 }
-

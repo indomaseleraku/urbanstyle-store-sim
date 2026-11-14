@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { copyToClipboard } from '@/lib/utils/clipboard';
 import Link from 'next/link';
 import { Sparkles, Copy, Check, ArrowRight, UserCheck, ShieldCheck, Tag, QrCode } from 'lucide-react';
 import { UserProfile } from '@/lib/types';
@@ -14,10 +15,11 @@ interface MemberLoyaltyBannerProps {
 export default function MemberLoyaltyBanner({ user, onOpenAuthModal }: MemberLoyaltyBannerProps) {
   const [copied, setCopied] = useState(false);
 
-  const handleCopyCode = () => {
-    navigator.clipboard.writeText('URBANWELCOME50');
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+  const handleCopyCode = async () => {
+    if (await copyToClipboard('URBANWELCOME50')) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    }
   };
 
   // Visual Barcode Bars generator (Alternating widths pattern for Uniqlo barcode)
@@ -25,7 +27,7 @@ export default function MemberLoyaltyBanner({ user, onOpenAuthModal }: MemberLoy
     3, 1, 2, 4, 1, 3, 2, 1, 4, 2, 1, 3, 1, 2, 4, 3, 1, 2, 1, 4, 2, 3, 1, 2, 3, 1, 4, 2, 1, 3, 2, 1, 4, 1, 3, 2, 4, 1, 2, 3, 1, 2, 4, 1, 3, 2
   ];
 
-  const memberIdSuffix = user?.id ? user.id.replace(/-/g, '').slice(0, 6).toUpperCase() : '8829';
+  const memberIdSuffix = user?.id ? user.id.replace(/-/g, '').slice(0, 6).toUpperCase() : 'GUEST';
   const fullMemberCode = `US-MEMBER-${memberIdSuffix}-2026`;
 
   return (
@@ -188,15 +190,15 @@ export default function MemberLoyaltyBanner({ user, onOpenAuthModal }: MemberLoy
                       Nama Anggota
                     </span>
                     <span className="font-black uppercase tracking-wide text-zinc-100 font-sans text-sm">
-                      {user?.full_name || 'KIMY EKA ARDIANSYAH'}
+                      {user?.full_name || 'MEMBER LIFEWEAR'}
                     </span>
                   </div>
                   <div className="text-right">
                     <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest block">
-                      Poin Terkumpul
+                      Preferensi & Status
                     </span>
                     <span className="font-mono font-black text-amber-400 text-sm">
-                      1.250 PTS
+                      SIZE {user?.preferred_size || 'M'} • AKTIF
                     </span>
                   </div>
                 </div>

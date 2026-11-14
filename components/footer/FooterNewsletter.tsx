@@ -1,23 +1,66 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Mail, Check, Sparkles } from 'lucide-react';
+import { Coupon } from '@/lib/types';
+import { dataStore } from '@/lib/store';
+import { copyToClipboard } from '@/lib/utils/clipboard';
 
 export default function FooterNewsletter() {
   const [emailInput, setEmailInput] = useState('');
   const [newsletterSubscribed, setNewsletterSubscribed] = useState(false);
   const [copiedCoupon, setCopiedCoupon] = useState(false);
+  const [welcomeCoupon, setWelcomeCoupon] = useState<Coupon | null>(null);
 
-  const handleNewsletterSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    let active = true;
+    dataStore.getCoupons().then((list) => {
+      if (!active || list.length === 0) return;
+      const featured = list.find((c) => c.type === 'fixed') || list[0];
+      setWelcomeCoupon(featured);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [newsletterError, setNewsletterError] = useState('');
+
+  const handleNewsletterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!emailInput.trim() || !emailInput.includes('@')) return;
-    setNewsletterSubscribed(true);
+    const cleaned = emailInput.trim();
+    if (!cleaned || !cleaned.includes('@')) {
+      setNewsletterError('Masukkan alamat email yang valid.');
+      return;
+    }
+    setNewsletterError('');
+    setIsSubmitting(true);
+    try {
+      const res = await fetch('/api/newsletter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleaned }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        setNewsletterError(json?.message || 'Gagal mendaftar newsletter. Coba lagi.');
+        return;
+      }
+      setNewsletterSubscribed(true);
+    } catch {
+      setNewsletterError('Koneksi gagal saat mendaftarkan newsletter.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const copyCouponCode = () => {
-    navigator.clipboard.writeText('URBANWELCOME50');
-    setCopiedCoupon(true);
-    setTimeout(() => setCopiedCoupon(false), 2000);
+  const copyCouponCode = async () => {
+    if (!welcomeCoupon) return;
+    if (await copyToClipboard(welcomeCoupon.code)) {
+      setCopiedCoupon(true);
+      setTimeout(() => setCopiedCoupon(false), 2000);
+    }
   };
 
   return (
@@ -26,13 +69,19 @@ export default function FooterNewsletter() {
         <div className="space-y-1 text-center md:text-left">
           <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-[#E60012] text-white text-[9px] font-black uppercase tracking-widest">
             <Sparkles size={11} />
-            <span>VOUCHER SAMBUTAN MEMBER</span>
+            <span>BULETIN & PROMO MEMBER</span>
           </div>
           <h3 className="text-lg sm:text-xl font-black uppercase tracking-tight text-white">
-            Dapatkan Diskon Rp 50.000 untuk Pesanan Pertama
+            {welcomeCoupon
+              ? `Gunakan Kupon ${welcomeCoupon.code} untuk Hemat Belanja`
+              : 'Berlangganan Pembaruan Koleksi LifeWear'}
           </h3>
           <p className="text-xs text-zinc-400 max-w-lg">
-            Daftarkan email Anda untuk buletin LifeWear dan gunakan kode voucher <strong className="text-white font-mono">URBANWELCOME50</strong> saat checkout.
+            {welcomeCoupon
+              ? `${welcomeCoupon.description} Gunakan kode voucher `
+              : 'Daftarkan email Anda untuk menerima kabar perilisan koleksi terbaru dan penawaran eksklusif member.'}
+            {welcomeCoupon && <strong className="text-white font-mono">{welcomeCoupon.code}</strong>}
+            {welcomeCoupon ? ' saat checkout.' : ''}
           </p>
         </div>
 
@@ -41,15 +90,23 @@ export default function FooterNewsletter() {
             <div className="p-3 bg-zinc-900 border border-zinc-700 flex items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-2 text-emerald-400 font-bold">
                 <Check size={16} />
-                <span>Kupon Aktif: <strong>URBANWELCOME50</strong></span>
+                <span>
+                  {welcomeCoupon ? (
+                    <>Kupon Aktif: <strong>{welcomeCoupon.code}</strong></>
+                  ) : (
+                    'Terima kasih! Email Anda telah terdaftar.'
+                  )}
+                </span>
               </div>
-              <button
-                type="button"
-                onClick={copyCouponCode}
-                className="px-3 py-1 bg-[#E60012] text-white text-[10px] font-bold uppercase tracking-wider hover:bg-red-700 transition-colors"
-              >
-                {copiedCoupon ? 'Tersalin!' : 'Salin Kode'}
-              </button>
+              {welcomeCoupon && (
+                <button
+                  type="button"
+                  onClick={copyCouponCode}
+                  className="px-3 py-1 bg-[#E60012] text-white text-[10px] font-bold uppercase tracking-wider hover:bg-red-700 transition-colors cursor-pointer"
+                >
+                  {copiedCoupon ? 'Tersalin!' : 'Salin Kode'}
+                </button>
+              )}
             </div>
           ) : (
             <form onSubmit={handleNewsletterSubmit} className="flex items-stretch gap-0">
@@ -66,11 +123,15 @@ export default function FooterNewsletter() {
               </div>
               <button
                 type="submit"
-                className="px-5 py-3 bg-[#E60012] hover:bg-red-700 text-white text-xs font-black uppercase tracking-wider transition-colors shrink-0 rounded-none shadow-xs"
+                disabled={isSubmitting}
+                className="px-5 py-3 bg-[#E60012] hover:bg-red-700 disabled:opacity-50 text-white text-xs font-black uppercase tracking-wider transition-colors shrink-0 rounded-none shadow-xs cursor-pointer"
               >
-                Klaim
+                {isSubmitting ? '...' : 'Klaim'}
               </button>
             </form>
+          )}
+          {newsletterError && !newsletterSubscribed && (
+            <p className="text-[11px] font-semibold text-red-400 mt-1.5">{newsletterError}</p>
           )}
         </div>
       </div>

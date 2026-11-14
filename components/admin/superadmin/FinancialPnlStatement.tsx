@@ -1,84 +1,88 @@
 import React from 'react';
 import { useAdminSuite } from '@/lib/admin-suite/AdminSuiteContext';
+import { computeFinanceSummary, STANDARD_COGS_RATIO } from '@/lib/admin-suite/financeUtils';
+
+const EXPENSE_CATEGORIES = [
+  'Gaji Karyawan',
+  'Sewa Gudang & Listrik',
+  'Biaya Pengiriman/Logistik',
+  'Pemasaran & Iklan',
+  'Server & Software',
+  'Lain-lain',
+] as const;
 
 interface FinancialPnlStatementProps {
-  totalRevenue: number;
-  totalCogs: number;
-  grossProfit: number;
-  grossMargin: string;
-  totalOpex: number;
-  operatingProfit: number;
-  estimatedTax: number;
-  netProfit: number;
-  netMargin: string;
-  periodMultiplier: number;
+  summary: ReturnType<typeof computeFinanceSummary>;
+  ppnRate: number;
 }
 
-export const FinancialPnlStatement: React.FC<FinancialPnlStatementProps> = ({
-  totalRevenue,
-  totalCogs,
-  grossProfit,
-  grossMargin,
-  totalOpex,
-  operatingProfit,
-  estimatedTax,
-  netProfit,
-  netMargin,
-  periodMultiplier,
-}) => {
+export const FinancialPnlStatement: React.FC<FinancialPnlStatementProps> = ({ summary, ppnRate }) => {
   const { formatRupiah } = useAdminSuite();
+  const {
+    realizedOrders,
+    periodExpenses,
+    totalRevenue,
+    totalCogs,
+    grossProfit,
+    grossMargin,
+    totalOpex,
+    operatingProfit,
+    estimatedTax,
+    netProfit,
+    netMargin,
+  } = summary;
+
+  const grossShipping = realizedOrders.reduce((acc, o) => acc + Number(o.shippingCost || 0), 0);
+  const totalDiscount = realizedOrders.reduce((acc, o) => acc + Number(o.discount || 0), 0);
+  const grossSales = realizedOrders.reduce((acc, o) => acc + Number(o.subtotal || 0), 0);
+  const hppFabric = Math.round(totalCogs * 0.75);
 
   return (
     <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
-      <div className="p-4 bg-slate-50/70 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-            Laporan Laba Rugi Komprehensif (Income Statement)
-          </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Satuan: Rupiah (IDR) · Berdasarkan standar akuntansi PSAK
-          </p>
-        </div>
-        <span className="text-xs font-mono text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 px-2.5 py-1 rounded border border-slate-200 dark:border-slate-700">
-          Periode: 14 Okt 2026
+      <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+        <h2 className="text-sm font-bold text-slate-900 dark:text-white">Laporan Laba Rugi (P&amp;L Statement)</h2>
+        <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">
+          {realizedOrders.length} Transaksi Terverifikasi · HPP {Math.round(STANDARD_COGS_RATIO * 100)}%
         </span>
       </div>
 
       <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-        {/* Section: Revenue */}
-        <div className="p-4 bg-slate-50/30 dark:bg-slate-800/20">
-          <div className="font-bold text-slate-900 dark:text-white text-xs uppercase tracking-wider mb-2">
-            1. Pendapatan Penjualan (Revenue)
+        <div className="p-4 space-y-2">
+          <div className="font-bold text-slate-900 dark:text-white text-xs uppercase tracking-wider mb-1">
+            1. Pendapatan Usaha (Operating Revenue)
           </div>
           <div className="space-y-1.5 pl-4">
             <div className="flex justify-between py-1 text-slate-600 dark:text-slate-300">
-              <span>Penjualan Toko Online Resmi (Direct Website)</span>
-              <span className="tabular-nums font-mono">{formatRupiah(totalRevenue * 0.46)}</span>
+              <span>Penjualan Kotor Produk (Subtotal)</span>
+              <span className="tabular-nums font-mono">{formatRupiah(grossSales)}</span>
             </div>
             <div className="flex justify-between py-1 text-slate-600 dark:text-slate-300">
-              <span>Penjualan Marketplace (Shopee, Tokopedia, TikTok Shop)</span>
-              <span className="tabular-nums font-mono">{formatRupiah(totalRevenue * 0.54)}</span>
+              <span>Pendapatan Ongkos Kirim</span>
+              <span className="tabular-nums font-mono">{formatRupiah(grossShipping)}</span>
+            </div>
+            <div className="flex justify-between py-1 text-rose-700 dark:text-rose-400">
+              <span>Potongan Diskon &amp; Promo Voucher</span>
+              <span className="tabular-nums font-mono">({formatRupiah(totalDiscount)})</span>
             </div>
             <div className="flex justify-between py-1.5 text-slate-900 dark:text-white font-bold border-t border-slate-200 dark:border-slate-800">
-              <span>Total Pendapatan Bersih</span>
+              <span>Total Pendapatan Bersih (Net Revenue)</span>
               <span className="tabular-nums font-mono">{formatRupiah(totalRevenue)}</span>
             </div>
           </div>
         </div>
 
-        {/* Section: COGS */}
-        <div className="p-4">
-          <div className="font-bold text-slate-900 dark:text-white text-xs uppercase tracking-wider mb-2">
-            2. Harga Pokok Penjualan (COGS / HPP)
+        <div className="p-4 space-y-2">
+          <div className="font-bold text-slate-900 dark:text-white text-xs uppercase tracking-wider mb-1">
+            2. Harga Pokok Penjualan (COGS — {Math.round(STANDARD_COGS_RATIO * 100)}%)
           </div>
           <div className="space-y-1.5 pl-4">
             <div className="flex justify-between py-1 text-slate-600 dark:text-slate-300">
-              <span>Biaya Bahan Baku & Produksi Apparel UrbanStyle</span>
-              <span className="tabular-nums font-mono text-rose-700 dark:text-rose-400">({formatRupiah(totalCogs * 0.75)})</span>
+              <span>Estimasi Biaya Produksi &amp; Bahan Baku</span>
+              <span className="tabular-nums font-mono text-rose-700 dark:text-rose-400">({formatRupiah(hppFabric)})</span>
             </div>
             <div className="flex justify-between py-1 text-slate-600 dark:text-slate-300">
-              <span>Packaging & Dus Hardbox Eksklusif</span>
-              <span className="tabular-nums font-mono text-rose-700 dark:text-rose-400">({formatRupiah(totalCogs * 0.25)})</span>
+              <span>Estimasi Kemasan &amp; Logistik Inbound</span>
+              <span className="tabular-nums font-mono text-rose-700 dark:text-rose-400">({formatRupiah(totalCogs - hppFabric)})</span>
             </div>
             <div className="flex justify-between py-1.5 text-slate-900 dark:text-white font-bold border-t border-slate-200 dark:border-slate-800">
               <span>Total Harga Pokok Penjualan (COGS)</span>
@@ -87,7 +91,6 @@ export const FinancialPnlStatement: React.FC<FinancialPnlStatementProps> = ({
           </div>
         </div>
 
-        {/* Gross Profit */}
         <div className="p-4 bg-slate-100/50 dark:bg-slate-800/50 flex justify-between font-bold text-slate-900 dark:text-white text-sm">
           <span>Laba Kotor (Gross Profit)</span>
           <div className="text-right">
@@ -96,32 +99,22 @@ export const FinancialPnlStatement: React.FC<FinancialPnlStatementProps> = ({
           </div>
         </div>
 
-        {/* Section: Operating Expenses */}
         <div className="p-4">
           <div className="font-bold text-slate-900 dark:text-white text-xs uppercase tracking-wider mb-2">
-            3. Beban Operasional (Operating Expenses / OPEX)
+            3. Beban Operasional (Operating Expenses / OPEX Aktual)
           </div>
           <div className="space-y-1.5 pl-4">
-            <div className="flex justify-between py-1 text-slate-600 dark:text-slate-300">
-              <span>Gaji Karyawan & Tunjangan Operasional Staf</span>
-              <span className="tabular-nums font-mono text-rose-700 dark:text-rose-400">({formatRupiah(68500000 * periodMultiplier)})</span>
-            </div>
-            <div className="flex justify-between py-1 text-slate-600 dark:text-slate-300">
-              <span>Sewa Gudang DC Cikarang & Utilitas Listrik</span>
-              <span className="tabular-nums font-mono text-rose-700 dark:text-rose-400">({formatRupiah(14200000 * periodMultiplier)})</span>
-            </div>
-            <div className="flex justify-between py-1 text-slate-600 dark:text-slate-300">
-              <span>Biaya Logistik & Subsidi Ekspedisi</span>
-              <span className="tabular-nums font-mono text-rose-700 dark:text-rose-400">({formatRupiah(6800000 * periodMultiplier)})</span>
-            </div>
-            <div className="flex justify-between py-1 text-slate-600 dark:text-slate-300">
-              <span>Pemasaran, Iklan Meta Ads & Influencer Kolaborasi</span>
-              <span className="tabular-nums font-mono text-rose-700 dark:text-rose-400">({formatRupiah(12500000 * periodMultiplier)})</span>
-            </div>
-            <div className="flex justify-between py-1 text-slate-600 dark:text-slate-300">
-              <span>Infrastruktur Cloud, Server & POS Software</span>
-              <span className="tabular-nums font-mono text-rose-700 dark:text-rose-400">({formatRupiah(3200000 * periodMultiplier)})</span>
-            </div>
+            {EXPENSE_CATEGORIES.map((cat) => {
+              const catSum = periodExpenses
+                .filter((e) => e.category === cat)
+                .reduce((acc, e) => acc + Number(e.amount || 0), 0);
+              return (
+                <div key={cat} className="flex justify-between py-1 text-slate-600 dark:text-slate-300">
+                  <span>{cat}</span>
+                  <span className="tabular-nums font-mono text-rose-700 dark:text-rose-400">({formatRupiah(catSum)})</span>
+                </div>
+              );
+            })}
             <div className="flex justify-between py-1.5 text-slate-900 dark:text-white font-bold border-t border-slate-200 dark:border-slate-800">
               <span>Total Beban Operasional</span>
               <span className="tabular-nums font-mono text-rose-700 dark:text-rose-400">({formatRupiah(totalOpex)})</span>
@@ -129,25 +122,22 @@ export const FinancialPnlStatement: React.FC<FinancialPnlStatementProps> = ({
           </div>
         </div>
 
-        {/* Section: Operating Profit */}
         <div className="p-4 bg-slate-50/50 dark:bg-slate-800/30 flex justify-between font-bold text-slate-900 dark:text-white">
           <span>Laba Operasional (EBITDA)</span>
           <span className="tabular-nums font-mono">{formatRupiah(operatingProfit)}</span>
         </div>
 
-        {/* Section: Tax */}
         <div className="p-4">
           <div className="flex justify-between text-slate-600 dark:text-slate-300 pl-4">
-            <span>Pajak Penghasilan Badan & PPN 11% (Estimasi Terutang)</span>
+            <span>Estimasi PPN &amp; Pajak {ppnRate}% (Dari EBITDA Positif)</span>
             <span className="tabular-nums font-mono text-rose-700 dark:text-rose-400">({formatRupiah(estimatedTax)})</span>
           </div>
         </div>
 
-        {/* Bottom Line: Net Profit */}
         <div className="p-5 bg-emerald-50/40 dark:bg-emerald-950/30 border-t-2 border-emerald-600 dark:border-emerald-500 flex justify-between items-center text-sm">
           <div>
             <span className="font-extrabold text-slate-900 dark:text-white">LABA BERSIH SETELAH PAJAK (NET PROFIT)</span>
-            <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">Dialokasikan ke modal ditahan (retained earnings)</span>
+            <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">Rekapitulasi transaksi &amp; biaya tercatat di database</span>
           </div>
           <div className="text-right">
             <span className="text-lg font-bold text-emerald-800 dark:text-emerald-300 tabular-nums font-mono">

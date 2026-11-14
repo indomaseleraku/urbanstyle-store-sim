@@ -1,60 +1,66 @@
-// lib/admin-suite/AdminSuiteContext.tsx
-// Unified Context Provider untuk UrbanStyle Commerce OS - Operations Suite
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { 
-  Role, Product, Order, OrderStatus, Employee, InboundShipment, 
-  ExpenseItem, PromoVoucher, ActivityLog, StockAdjustment 
+import {
+  Role,
+  Product,
+  Order,
+  OrderStatus,
+  Employee,
+  InboundShipment,
+  ExpenseItem,
+  ActivityLog,
+  StockAdjustment,
+  NotificationItem,
+  PromoVoucher,
+  AdminCustomerReview,
+  StoreSettings,
 } from './types';
 import { useAdminSuiteDomainState } from './useAdminSuiteDomainState';
-
-export type Theme = 'light' | 'dark';
-
-export interface AppNotification {
-  id: string;
-  title: string;
-  message: string;
-  time: string;
-  type: 'order' | 'warehouse' | 'finance' | 'employee';
-  read: boolean;
-}
 
 interface AdminSuiteContextType {
   role: Role;
   setRole: (role: Role) => void;
   allowRoleSwitch: boolean;
-  theme: Theme;
-  toggleTheme: () => void;
   activeNav: string;
   setActiveNav: (nav: string) => void;
-  
+  theme: 'light' | 'dark';
+  toggleTheme: () => void;
+  isLoadingData: boolean;
+  mutationError: string | null;
+  clearMutationError: () => void;
+  refreshData: () => Promise<void>;
+
   products: Product[];
-  addProduct: (product: Omit<Product, 'id' | 'salesCount' | 'rating'>) => void;
-  updateProduct: (id: string, updates: Partial<Product>) => void;
-  deleteProduct: (id: string) => void;
-  adjustStock: (sku: string, diff: number, reason: StockAdjustment['reason']) => void;
-  
   orders: Order[];
-  updateOrderStatus: (orderId: string, status: OrderStatus, trackingNumber?: string) => void;
-  createOrder: (newOrderData: Partial<Order>) => Order;
-  
   employees: Employee[];
-  addEmployee: (employee: Omit<Employee, 'id' | 'lastLogin'>) => void;
-  updateEmployee: (id: string, updates: Partial<Employee>) => void;
-  toggleEmployeeStatus: (id: string) => void;
-
   inboundShipments: InboundShipment[];
-  receiveShipment: (id: string) => void;
-  stockAdjustments: StockAdjustment[];
-
   expenses: ExpenseItem[];
-  addExpense: (expense: Omit<ExpenseItem, 'id' | 'status'>) => void;
-  promos: PromoVoucher[];
-  addPromo: (promo: Omit<PromoVoucher, 'id' | 'usageCount'>) => void;
-
   activityLogs: ActivityLog[];
-  notifications: AppNotification[];
+  stockAdjustments: StockAdjustment[];
+  notifications: NotificationItem[];
+  promos: PromoVoucher[];
+  reviews: AdminCustomerReview[];
+  storeSettings: StoreSettings;
+
+  updateOrderStatus: (orderId: string, newStatus: OrderStatus, trackingNumber?: string) => Promise<void>;
+  addProduct: (product: Omit<Product, 'id' | 'salesCount' | 'rating'>) => Promise<void>;
+  updateProduct: (id: string, updates: Partial<Product>) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
+  adjustStock: (sku: string, diff: number, reason: StockAdjustment['reason']) => Promise<void>;
+  addEmployee: (emp: Omit<Employee, 'id' | 'lastLogin'>) => Promise<void>;
+  updateEmployee: (id: string, updates: Partial<Employee>) => Promise<void>;
+  toggleEmployeeStatus: (id: string) => Promise<void>;
+  deleteEmployee: (id: string) => Promise<void>;
+  addInbound: (payload: Omit<InboundShipment, 'id' | 'status'>) => Promise<void>;
+  receiveShipment: (shipmentId: string, targetProductId?: string) => Promise<void>;
+  addExpense: (expense: Omit<ExpenseItem, 'id' | 'date'>) => Promise<void>;
+  addPromo: (promo: Omit<PromoVoucher, 'id' | 'usageCount'>) => Promise<void>;
+  togglePromoStatus: (promoId: string) => Promise<void>;
+  saveSettings: (settings: StoreSettings) => Promise<boolean>;
+  createOrder: (
+    newOrder: Omit<Order, 'id' | 'orderNumber' | 'createdAt' | 'paymentStatus' | 'status'>
+  ) => Promise<Order | null>;
   markNotificationRead: (id: string) => void;
   clearNotifications: () => void;
 
@@ -68,10 +74,10 @@ interface AdminSuiteContextType {
   setIsFinanceExportOpen: (open: boolean) => void;
   isMobileMenuOpen: boolean;
   setIsMobileMenuOpen: (open: boolean) => void;
-
-  formatRupiah: (amount: number) => string;
   globalSearch: string;
   setGlobalSearch: (q: string) => void;
+
+  formatRupiah: (amount: number) => string;
 }
 
 const AdminSuiteContext = createContext<AdminSuiteContextType | undefined>(undefined);
@@ -82,97 +88,89 @@ interface AdminSuiteProviderProps {
   allowRoleSwitch?: boolean;
 }
 
-export const AdminSuiteProvider: React.FC<AdminSuiteProviderProps> = ({ 
-  children, 
+export const AdminSuiteProvider: React.FC<AdminSuiteProviderProps> = ({
+  children,
   initialRole = 'superadmin',
-  allowRoleSwitch = true
+  allowRoleSwitch = false,
 }) => {
   const [role, setRoleState] = useState<Role>(initialRole);
   const [activeNav, setActiveNav] = useState<string>('overview');
-  const [globalSearch, setGlobalSearch] = useState<string>('');
-
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window === 'undefined') return 'light';
-    const saved = localStorage.getItem('urban_theme');
-    if (saved === 'dark' || saved === 'light') return saved;
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('urbanstyle-admin-theme');
+      if (saved === 'dark' || saved === 'light') return saved;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    return 'light';
   });
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem('urban_theme', theme);
+    setRoleState(initialRole);
+    setActiveNav('overview');
+  }, [initialRole]);
+
+  useEffect(() => {
+    const root = window.document.documentElement;
     if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
+      root.classList.add('dark');
     } else {
-      document.documentElement.classList.remove('dark');
+      root.classList.remove('dark');
     }
+    localStorage.setItem('urbanstyle-admin-theme', theme);
   }, [theme]);
 
-  const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  const toggleTheme = () => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
 
-  const setRole = (newRole: Role) => {
+  const setRole = (nextRole: Role) => {
     if (!allowRoleSwitch) return;
-    setRoleState(newRole);
+    setRoleState(nextRole);
     setActiveNav('overview');
   };
 
-  const domain = useAdminSuiteDomainState(role);
-
-  const [notifications, setNotifications] = useState<AppNotification[]>([
-    {
-      id: 'notif-1',
-      title: 'Stok Terbatas Terdeteksi',
-      message: 'Celana Ankle Pants (URBAN-CHN-03) tersisa 22 unit di rak DC-1',
-      time: '15m lalu',
-      type: 'warehouse',
-      read: false
-    },
-    {
-      id: 'notif-2',
-      title: 'Pesanan Baru Masuk',
-      message: 'Order #ORD-2026-9023 senilai Rp 583.000 terverifikasi lunas via QRIS',
-      time: '25m lalu',
-      type: 'order',
-      read: false
-    }
-  ]);
-
   const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState<Order | null>(null);
   const [selectedPackingOrder, setSelectedPackingOrder] = useState<Order | null>(null);
-  const [isStorefrontOpen, setIsStorefrontOpen] = useState<boolean>(false);
-  const [isFinanceExportOpen, setIsFinanceExportOpen] = useState<boolean>(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
+  const [isStorefrontOpen, setIsStorefrontOpen] = useState(false);
+  const [isFinanceExportOpen, setIsFinanceExportOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState('');
 
-  const formatRupiah = (amount: number): string => {
+  const domain = useAdminSuiteDomainState(role);
+
+  const formatRupiah = (amount: number) => {
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
       currency: 'IDR',
       minimumFractionDigits: 0,
-      maximumFractionDigits: 0
+      maximumFractionDigits: 0,
     }).format(amount);
   };
 
-  const markNotificationRead = (id: string) => {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-  };
-
-  const clearNotifications = () => setNotifications([]);
-
   return (
-    <AdminSuiteContext.Provider value={{
-      role, setRole, allowRoleSwitch,
-      theme, toggleTheme,
-      activeNav, setActiveNav,
-      ...domain,
-      notifications, markNotificationRead, clearNotifications,
-      selectedInvoiceOrder, setSelectedInvoiceOrder,
-      selectedPackingOrder, setSelectedPackingOrder,
-      isStorefrontOpen, setIsStorefrontOpen,
-      isFinanceExportOpen, setIsFinanceExportOpen,
-      isMobileMenuOpen, setIsMobileMenuOpen,
-      formatRupiah,
-      globalSearch, setGlobalSearch
-    }}>
+    <AdminSuiteContext.Provider
+      value={{
+        role,
+        setRole,
+        allowRoleSwitch,
+        activeNav,
+        setActiveNav,
+        theme,
+        toggleTheme,
+        ...domain,
+        selectedInvoiceOrder,
+        setSelectedInvoiceOrder,
+        selectedPackingOrder,
+        setSelectedPackingOrder,
+        isStorefrontOpen,
+        setIsStorefrontOpen,
+        isFinanceExportOpen,
+        setIsFinanceExportOpen,
+        isMobileMenuOpen,
+        setIsMobileMenuOpen,
+        globalSearch,
+        setGlobalSearch,
+        formatRupiah,
+      }}
+    >
       {children}
     </AdminSuiteContext.Provider>
   );
@@ -180,8 +178,6 @@ export const AdminSuiteProvider: React.FC<AdminSuiteProviderProps> = ({
 
 export const useAdminSuite = () => {
   const context = useContext(AdminSuiteContext);
-  if (!context) {
-    throw new Error('useAdminSuite must be used within an AdminSuiteProvider');
-  }
+  if (!context) throw new Error('useAdminSuite must be used within AdminSuiteProvider');
   return context;
 };

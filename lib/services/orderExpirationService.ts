@@ -1,16 +1,13 @@
 // lib/services/orderExpirationService.ts
-// Domain Service: Manajemen Batas Waktu Pembayaran (20 Menit) & Restock Otomatis
+// Domain Service: Manajemen Batas Waktu Pembayaran (20 Menit) & Restock Otomatis Atomik
 
 import { Order } from '../types';
-import { supabase, isSupabaseConfigured } from './supabaseClient';
+import { checkSupabaseConfigured } from './supabaseClient';
 import { productService } from './productService';
 
-export const PAYMENT_TIMEOUT_MS = 20 * 60 * 1000; // 20 Menit
+export const PAYMENT_TIMEOUT_MS = 20 * 60 * 1000;
 
 export const orderExpirationService = {
-  /**
-   * Menghitung sisa waktu pembayaran untuk pesanan
-   */
   getRemainingTime(createdAt: string): { remainingMs: number; isExpired: boolean; formatted: string } {
     const createdTime = new Date(createdAt).getTime();
     if (isNaN(createdTime)) {
@@ -29,9 +26,6 @@ export const orderExpirationService = {
     return { remainingMs, isExpired, formatted };
   },
 
-  /**
-   * Batalkan satu pesanan yang kadaluwarsa dan kembalikan kuota stok produk
-   */
   async expireOrder(order: Order): Promise<boolean> {
     if (order.status !== 'Menunggu Pembayaran' && (order.status as string) !== 'pending_payment') {
       return false;
@@ -39,50 +33,42 @@ export const orderExpirationService = {
 
     order.status = 'Dibatalkan';
 
-    // 1. Kembalikan stok fisik produk secara atomik
-    const localProds = productService._getLocalProducts();
-    const cachedProds = productService._getCachedRawProducts();
+    if (typeof window === 'undefined' && checkSupabaseConfigured()) {
+      try {
+        const { supabaseAdmin } = await import('../supabaseAdmin');
+        const { data: updatedOrder, error } = await supabaseAdmin
+          .from('orders')
+          .update({ status: 'Dibatalkan', updated_at: new Date().toISOString() })
+          .eq('order_number', order.order_number)
+          .eq('status', 'Menunggu Pembayaran')
+          .select('id')
+          .maybeSingle();
 
+        if (!error && updatedOrder) {
+          for (const item of order.items) {
+            if (!item.product_id || !item.quantity || item.quantity <= 0) continue;
+            await supabaseAdmin.rpc('atomic_increment_stock', {
+              p_product_id: Number(item.product_id),
+              p_qty: Number(item.quantity),
+            });
+          }
+          productService.invalidateCache();
+        }
+        return true;
+      } catch (err) {
+        console.warn('Gagal membatalkan & restock pesanan kadaluwarsa di Supabase:', err);
+        return false;
+      }
+    }
+
+    const localProds = productService._getLocalProducts();
     for (const item of order.items) {
       const prod = localProds.find((p) => p.id === item.product_id);
-      if (prod) {
-        prod.stock += item.quantity;
-      }
-      if (cachedProds) {
-        const cachedP = cachedProds.find((p) => p.id === item.product_id);
-        if (cachedP && prod) {
-          cachedP.stock = prod.stock;
-        }
-      }
-
-      // Update stok di Supabase jika aktif
-      if (isSupabaseConfigured && supabase && prod) {
-        try {
-          await supabase.from('products').update({ stock: prod.stock }).eq('id', item.product_id);
-        } catch (err) {
-          console.warn('Gagal restock produk di Supabase:', err);
-        }
-      }
+      if (prod) prod.stock += item.quantity;
     }
-
-    // 2. Update status pesanan di Supabase jika aktif
-    if (isSupabaseConfigured && supabase) {
-      try {
-        await supabase
-          .from('orders')
-          .update({ status: 'Dibatalkan' })
-          .eq('order_number', order.order_number);
-      } catch (err) {
-        console.warn('Gagal update status pesanan kadaluwarsa di Supabase:', err);
-      }
-    }
-
     return true;
   },
 
-  /**
-   * Pindai dan batalkan seluruh pesanan yang melewati batas 20 menit
-   */
   async checkAndExpireBatch(orders: Order[]): Promise<number> {
     let expiredCount = 0;
     for (const order of orders) {

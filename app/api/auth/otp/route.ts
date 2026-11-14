@@ -1,45 +1,72 @@
 // app/api/auth/otp/route.ts
-// Endpoint Pengiriman & Verifikasi Kode OTP 6 Digit via Gmail SMTP
+// Server-side Challenge-Backed OTP Delivery & Single-Use Verification
 
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { sendOtpEmail } from '@/lib/services/emailSmtpService';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import {
+  checkRateLimit,
+  OTP_RATE_LIMIT,
+  OTP_VERIFY_RATE_LIMIT,
+  getClientIp,
+} from '@/lib/services/rateLimiter';
+import { constantTimeStringEqual } from '@/lib/services/sessionServerHelper';
 
-const OTP_SECRET = process.env.SESSION_SECRET;
-if (!OTP_SECRET) {
-  throw new Error('[api/auth/otp] SESSION_SECRET environment variable tidak di-set.');
-}
-const OTP_TTL_MS = 5 * 60 * 1000; // 5 menit
+type OtpPurpose = 'login' | 'register' | 'reset';
 
-function signOtpToken(email: string, otp: string, expiresAt: number): string {
-  const payload = `${email.toLowerCase().trim()}:${otp.trim()}:${expiresAt}`;
-  const sig = crypto.createHmac('sha256', OTP_SECRET as string).update(payload).digest('hex');
-  return `${expiresAt}.${sig}`;
-}
+const OTP_TTL_MS = 5 * 60 * 1000;
+const MAX_OTP_ATTEMPTS = 5;
 
-function verifyOtpToken(email: string, otp: string, otpToken: string): { valid: boolean; reason?: string } {
-  if (!otpToken || !otpToken.includes('.')) {
-    return { valid: false, reason: 'Token sesi OTP tidak valid.' };
+function getOtpSecret(): string {
+  const s = process.env.SESSION_SECRET;
+  if (!s || s.trim().length < 16) {
+    throw new Error('[api/auth/otp] SESSION_SECRET wajib dikonfigurasi.');
   }
-  const [expiresStr, providedSig] = otpToken.split('.');
+  return s;
+}
+
+function hashOtpCode(nonce: string, email: string, purpose: OtpPurpose, otp: string): string {
+  return crypto
+    .createHmac('sha256', getOtpSecret())
+    .update(`${nonce}:${email}:${purpose}:${otp.trim()}`)
+    .digest('hex');
+}
+
+function signChallengeHandle(nonce: string, expiresAt: number, purpose: OtpPurpose): string {
+  const sig = crypto
+    .createHmac('sha256', getOtpSecret())
+    .update(`${nonce}:${expiresAt}:${purpose}`)
+    .digest('hex');
+  return `${nonce}.${expiresAt}.${purpose}.${sig}`;
+}
+
+function parseChallengeHandle(
+  token: string,
+  expectedPurpose?: OtpPurpose
+): { valid: boolean; nonce?: string; expiresAt?: number; purpose?: OtpPurpose } {
+  const parts = String(token || '').split('.');
+  if (parts.length !== 4) return { valid: false };
+
+  const [nonce, expiresStr, purposeRaw, providedSig] = parts;
+  if (!nonce || !/^\d+$/.test(expiresStr)) return { valid: false };
+  if (purposeRaw !== 'login' && purposeRaw !== 'register' && purposeRaw !== 'reset') {
+    return { valid: false };
+  }
+  if (expectedPurpose && purposeRaw !== expectedPurpose) return { valid: false };
+
   const expiresAt = Number(expiresStr);
   if (!Number.isFinite(expiresAt) || Date.now() > expiresAt) {
-    return { valid: false, reason: 'Kode OTP telah kedaluwarsa (lebih dari 5 menit). Silakan minta kode baru.' };
+    return { valid: false };
   }
 
-  const expectedToken = signOtpToken(email, otp, expiresAt);
-  const expectedSig = expectedToken.split('.')[1];
-
-  try {
-    const a = Buffer.from(providedSig, 'hex');
-    const b = Buffer.from(expectedSig, 'hex');
-    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-      return { valid: false, reason: 'Kode OTP 6 digit yang dimasukkan tidak sesuai.' };
-    }
-    return { valid: true };
-  } catch {
-    return { valid: false, reason: 'Kode OTP tidak valid.' };
+  const expectedToken = signChallengeHandle(nonce, expiresAt, purposeRaw);
+  const expectedSig = expectedToken.split('.')[3];
+  if (!constantTimeStringEqual(providedSig, expectedSig)) {
+    return { valid: false };
   }
+
+  return { valid: true, nonce, expiresAt, purpose: purposeRaw };
 }
 
 export async function POST(req: NextRequest) {
@@ -47,19 +74,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const action = String(body.action || 'send');
     const rawEmail = String(body.email || '').trim().toLowerCase();
-
-    // — Rate limiting hanya untuk action 'send' —
-    if (action === 'send') {
-      const { checkRateLimit, OTP_RATE_LIMIT, getClientIp } = await import('@/lib/services/rateLimiter');
-      const ip = getClientIp(req);
-      const rl = checkRateLimit(`otp:${ip}`, OTP_RATE_LIMIT);
-      if (!rl.allowed) {
-        return NextResponse.json(
-          { success: false, message: 'Terlalu banyak permintaan kode OTP. Tunggu beberapa menit.' },
-          { status: 429 }
-        );
-      }
-    }
+    const ip = getClientIp(req);
 
     if (!rawEmail || !rawEmail.includes('@')) {
       return NextResponse.json(
@@ -69,10 +84,46 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'send') {
-      const purpose = body.purpose === 'register' ? 'register' : 'login';
-      const otpCode = String(crypto.randomInt(100000, 999999));
+      const rl = checkRateLimit(`otp:${ip}:${rawEmail}`, OTP_RATE_LIMIT);
+      if (!rl.allowed) {
+        return NextResponse.json(
+          { success: false, message: 'Terlalu banyak permintaan kode OTP. Tunggu beberapa menit.' },
+          { status: 429 }
+        );
+      }
+
+      const purpose: OtpPurpose =
+        body.purpose === 'register' ? 'register' : body.purpose === 'reset' ? 'reset' : 'login';
+
+      const otpCode = String(crypto.randomInt(100000, 1000000));
+      const nonce = crypto.randomUUID();
       const expiresAt = Date.now() + OTP_TTL_MS;
-      const otpToken = signOtpToken(rawEmail, otpCode, expiresAt);
+      const otpHash = hashOtpCode(nonce, rawEmail, purpose, otpCode);
+
+      // Batalkan challenge lama yang belum dipakai untuk email & tujuan yang sama
+      await supabaseAdmin
+        .from('auth_otp_challenges')
+        .update({ consumed_at: new Date().toISOString() })
+        .eq('email', rawEmail)
+        .eq('purpose', purpose)
+        .is('consumed_at', null);
+
+      const { error: insertErr } = await supabaseAdmin.from('auth_otp_challenges').insert({
+        email: rawEmail,
+        purpose,
+        otp_hash: otpHash,
+        nonce,
+        attempts: 0,
+        max_attempts: MAX_OTP_ATTEMPTS,
+        expires_at: new Date(expiresAt).toISOString(),
+      });
+
+      if (insertErr) {
+        return NextResponse.json(
+          { success: false, message: 'Gagal menginisialisasi tantangan verifikasi OTP.' },
+          { status: 500 }
+        );
+      }
 
       const mailRes = await sendOtpEmail(rawEmail, otpCode, purpose);
       if (!mailRes.sent) {
@@ -85,6 +136,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      const otpToken = signChallengeHandle(nonce, expiresAt, purpose);
       return NextResponse.json({
         success: true,
         otpToken,
@@ -94,35 +146,116 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'verify') {
+      const rl = checkRateLimit(`otp-verify:${ip}:${rawEmail}`, OTP_VERIFY_RATE_LIMIT);
+      if (!rl.allowed) {
+        return NextResponse.json(
+          { success: false, message: 'Terlalu banyak percobaan verifikasi OTP. Minta kode baru nanti.' },
+          { status: 429 }
+        );
+      }
+
       const otp = String(body.otp || '').replace(/\s+/g, '');
       const otpToken = String(body.otpToken || '');
+      const purpose: OtpPurpose | undefined =
+        body.purpose === 'register' || body.purpose === 'reset' || body.purpose === 'login'
+          ? body.purpose
+          : undefined;
 
       if (!/^\d{6}$/.test(otp)) {
         return NextResponse.json(
-          { success: false, message: 'Masukkan 6 digit angka kode OTP.' },
+          { success: false, message: 'Kode OTP harus berupa 6 digit angka.' },
           { status: 400 }
         );
       }
 
-      const check = verifyOtpToken(rawEmail, otp, otpToken);
-      if (!check.valid) {
+      const handle = parseChallengeHandle(otpToken, purpose);
+      if (!handle.valid || !handle.nonce || !handle.purpose) {
         return NextResponse.json(
-          { success: false, message: check.reason || 'Kode OTP salah.' },
+          { success: false, message: 'Sesi kode OTP kedaluwarsa atau tidak valid. Minta kode baru.' },
+          { status: 401 }
+        );
+      }
+
+      const { data: challenge, error: fetchErr } = await supabaseAdmin
+        .from('auth_otp_challenges')
+        .select('id, email, purpose, otp_hash, nonce, attempts, max_attempts, expires_at, consumed_at')
+        .eq('nonce', handle.nonce)
+        .eq('email', rawEmail)
+        .eq('purpose', handle.purpose)
+        .maybeSingle();
+
+      if (fetchErr || !challenge) {
+        return NextResponse.json(
+          { success: false, message: 'Tantangan OTP tidak ditemukan.' },
+          { status: 401 }
+        );
+      }
+
+      if (challenge.consumed_at) {
+        return NextResponse.json(
+          { success: false, message: 'Kode OTP ini sudah pernah digunakan. Silakan minta kode baru.' },
+          { status: 401 }
+        );
+      }
+
+      if (new Date(challenge.expires_at).getTime() < Date.now()) {
+        return NextResponse.json(
+          { success: false, message: 'Kode OTP telah kedaluwarsa (lebih dari 5 menit).' },
+          { status: 401 }
+        );
+      }
+
+      if (Number(challenge.attempts) >= Number(challenge.max_attempts || MAX_OTP_ATTEMPTS)) {
+        return NextResponse.json(
+          { success: false, message: 'Batas percobaan salah terlampaui. Silakan minta kode OTP baru.' },
+          { status: 429 }
+        );
+      }
+
+      const candidateHash = hashOtpCode(challenge.nonce, rawEmail, handle.purpose, otp);
+      if (!constantTimeStringEqual(challenge.otp_hash, candidateHash)) {
+        const nextAttempts = Number(challenge.attempts) + 1;
+        await supabaseAdmin
+          .from('auth_otp_challenges')
+          .update({ attempts: nextAttempts })
+          .eq('id', challenge.id);
+        return NextResponse.json(
+          {
+            success: false,
+            message: `Kode OTP 6 digit tidak sesuai (Sisa percobaan: ${Math.max(0, MAX_OTP_ATTEMPTS - nextAttempts)}).`,
+          },
+          { status: 401 }
+        );
+      }
+
+      // Tandai terpakai secara atomik (single-use)
+      const nowIso = new Date().toISOString();
+      const { data: consumedRow, error: consumeErr } = await supabaseAdmin
+        .from('auth_otp_challenges')
+        .update({ verified_at: nowIso, consumed_at: nowIso })
+        .eq('id', challenge.id)
+        .is('consumed_at', null)
+        .select('id')
+        .maybeSingle();
+
+      if (consumeErr || !consumedRow) {
+        return NextResponse.json(
+          { success: false, message: 'Kode OTP sudah digunakan.' },
           { status: 401 }
         );
       }
 
       return NextResponse.json({
         success: true,
-        message: 'Verifikasi OTP berhasil.',
+        message: 'Verifikasi kode OTP berhasil!',
       });
     }
 
-    return NextResponse.json({ success: false, message: 'Action tidak dikenali.' }, { status: 400 });
+    return NextResponse.json({ success: false, message: 'Aksi OTP tidak dikenali.' }, { status: 400 });
   } catch (err) {
     console.error('[/api/auth/otp] Error:', err);
     return NextResponse.json(
-      { success: false, message: 'Terjadi kesalahan pada server autentikasi OTP.' },
+      { success: false, message: 'Terjadi kesalahan saat memproses OTP.' },
       { status: 500 }
     );
   }

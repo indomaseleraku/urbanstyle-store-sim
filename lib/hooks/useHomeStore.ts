@@ -1,16 +1,32 @@
 // lib/hooks/useHomeStore.ts
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Product, Category, CartItem } from '@/lib/types';
+import { Product, Category } from '@/lib/types';
 import { dataStore } from '@/lib/store';
 import { useAuth } from '@/lib/auth-context';
+import { useCart } from '@/lib/cart-context';
+import { useWishlist } from '@/lib/wishlist-context';
 import { ModalType } from '@/components/InformationModals';
 
 export function useHomeStore() {
   const searchParams = useSearchParams();
-  const { openAuthModal } = useAuth();
+  const { user, openAuthModal } = useAuth();
+  const {
+    cartItems,
+    setCartItems,
+    selectedCourier,
+    setSelectedCourier,
+    totalCartCount,
+    addToCart,
+    setInstantCartItem,
+    updateCartQty,
+    removeCartItem,
+    clearCart,
+    syncCartWithProducts,
+  } = useCart();
+  const { wishlist, toggleWishlist, removeFromWishlist } = useWishlist();
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -24,17 +40,30 @@ export function useHomeStore() {
   const [visibleCount, setVisibleCount] = useState<number>(8);
   const [gridDensity, setGridDensity] = useState<'compact' | 'editorial'>('compact');
 
-  // Cart & Drawers
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  // UI Drawers & Modals
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [selectedCourier, setSelectedCourier] = useState('J&T Express (Reguler)');
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [wishlist, setWishlist] = useState<Product[]>([]);
+  const [pendingInstantCheckout, setPendingInstantCheckout] = useState(false);
   const [isWishlistOpen, setIsWishlistOpen] = useState(false);
   const [selectedProductForDetail, setSelectedProductForDetail] = useState<Product | null>(null);
   const [isGlobalSizeChartOpen, setIsGlobalSizeChartOpen] = useState(false);
   const [activeInfoModal, setActiveInfoModal] = useState<ModalType>(null);
   const [isMobileCategoryDrawerOpen, setIsMobileCategoryDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    if (user && pendingInstantCheckout) {
+      setPendingInstantCheckout(false);
+      setIsCheckoutOpen(true);
+    }
+  }, [user, pendingInstantCheckout]);
+
+  const refreshProducts = useCallback(async () => {
+    dataStore.invalidateCache();
+    const rawProds = await dataStore.getProducts(selectedCategory, debouncedSearchQuery, selectedGender, sortBy);
+    const prods = inStockOnly ? rawProds.filter((p) => p.stock > 0) : rawProds;
+    setProducts(prods);
+    setSelectedProductForDetail((prev) => (prev ? rawProds.find((p) => p.id === prev.id) || prev : null));
+  }, [selectedCategory, debouncedSearchQuery, selectedGender, sortBy, inStockOnly]);
 
   // Toast
   const [toast, setToast] = useState({
@@ -65,10 +94,6 @@ export function useHomeStore() {
   }, [toast.visible]);
 
   useEffect(() => {
-    setWishlist(dataStore.getWishlist());
-  }, []);
-
-  useEffect(() => {
     const cat = searchParams.get('category');
     const gen = searchParams.get('gender');
     const q = searchParams.get('search');
@@ -80,23 +105,41 @@ export function useHomeStore() {
   }, [searchParams, openAuthModal]);
 
   useEffect(() => {
+    let active = true;
     async function loadData() {
       setIsLoading(true);
-      const cats = await dataStore.getCategories();
-      let prods = await dataStore.getProducts(selectedCategory, debouncedSearchQuery, selectedGender, sortBy);
-      if (inStockOnly) {
-        prods = prods.filter((p) => p.stock > 0);
+      try {
+        const isUnfilteredCatalog =
+          selectedCategory === 'all' &&
+          selectedGender === 'all' &&
+          debouncedSearchQuery.trim() === '' &&
+          !inStockOnly;
+        const [cats, rawProds] = await Promise.all([
+          dataStore.getCategories(),
+          dataStore.getProducts(selectedCategory, debouncedSearchQuery, selectedGender, sortBy),
+        ]);
+        if (!active) return;
+        if (isUnfilteredCatalog) {
+          syncCartWithProducts(rawProds);
+        }
+        const prods = inStockOnly ? rawProds.filter((p) => p.stock > 0) : rawProds;
+        setCategories(cats);
+        setProducts(prods);
+      } catch (err) {
+        console.warn('Gagal memuat katalog produk:', err);
+      } finally {
+        if (active) setIsLoading(false);
       }
-      setCategories(cats);
-      setProducts(prods);
-      setIsLoading(false);
     }
     loadData();
-  }, [selectedCategory, selectedGender, debouncedSearchQuery, sortBy, inStockOnly]);
+    return () => {
+      active = false;
+    };
+  }, [selectedCategory, selectedGender, debouncedSearchQuery, sortBy, inStockOnly, syncCartWithProducts]);
 
   const getCategoryDisplayName = (slug: string) => {
     switch (slug) {
-      case 'sale': return 'Promo 🔥';
+      case 'sale': return 'Promo';
       case 'kaos': return 'Kaos';
       case 'kemeja': return 'Kemeja';
       case 'polo': return 'Polo Shirt';
@@ -110,13 +153,25 @@ export function useHomeStore() {
   };
 
   const handleToggleWishlist = (product: Product) => {
-    dataStore.toggleWishlist(product);
-    setWishlist(dataStore.getWishlist());
+    toggleWishlist(product);
   };
 
   const handleMoveToCart = (product: Product, size?: string) => {
-    const chosenSize = size || product.sizes[0] || 'M';
+    if (product.stock <= 0) {
+      setSelectedProductForDetail(product);
+      setIsWishlistOpen(false);
+      return;
+    }
+    const availableSizes = product.sizes.filter((sz) => !product.out_of_stock_sizes?.includes(sz));
+    const chosenSize =
+      (size && availableSizes.includes(size) ? size : availableSizes[0]) || product.sizes[0] || 'M';
+    if (product.out_of_stock_sizes?.includes(chosenSize)) {
+      setSelectedProductForDetail(product);
+      setIsWishlistOpen(false);
+      return;
+    }
     handleAddToCart(product, chosenSize, product.colors[0]?.name || 'Standard', 1, false);
+    void removeFromWishlist(product.id);
     setIsWishlistOpen(false);
     setIsCartOpen(true);
   };
@@ -128,21 +183,7 @@ export function useHomeStore() {
     quantity: number = 1,
     openDrawer: boolean = false
   ) => {
-    setCartItems((prev) => {
-      const existingIdx = prev.findIndex(
-        (it) => it.product.id === product.id && it.selected_size === size && it.selected_color === colorName
-      );
-      if (existingIdx !== -1) {
-        const updated = [...prev];
-        const newQty = updated[existingIdx].quantity + quantity;
-        if (newQty <= product.stock) {
-          updated[existingIdx].quantity = newQty;
-        }
-        return updated;
-      }
-      return [...prev, { product, selected_size: size, selected_color: colorName, quantity }];
-    });
-
+    addToCart(product, size, colorName, quantity);
     if (openDrawer) {
       setIsCartOpen(true);
     } else {
@@ -151,34 +192,37 @@ export function useHomeStore() {
   };
 
   const handleInstantBuy = (product: Product, size: string, colorName: string, quantity: number = 1) => {
-    setCartItems([{ product, selected_size: size, selected_color: colorName, quantity }]);
+    if (product.stock <= 0 || product.out_of_stock_sizes?.includes(size)) return;
+    setInstantCartItem(product, size, colorName, quantity);
     setSelectedProductForDetail(null);
+    if (!user) {
+      setPendingInstantCheckout(true);
+      openAuthModal();
+      return;
+    }
     setIsCheckoutOpen(true);
   };
 
   const handleUpdateQty = (index: number, newQty: number) => {
-    setCartItems((prev) => {
-      if (newQty <= 0) return prev.filter((_, i) => i !== index);
-      const updated = [...prev];
-      if (newQty <= updated[index].product.stock) updated[index].quantity = newQty;
-      return updated;
-    });
+    updateCartQty(index, newQty);
   };
 
   const handleRemoveItem = (index: number) => {
-    setCartItems((prev) => prev.filter((_, i) => i !== index));
+    removeCartItem(index);
   };
 
   const handleConfirmOrder = async (payload: any) => {
     const res = await dataStore.createOrder({ ...payload, cart_items: cartItems });
     if (res.success) {
-      const prods = await dataStore.getProducts(selectedCategory, searchQuery, selectedGender, sortBy);
+      dataStore.invalidateCache();
+      let prods = await dataStore.getProducts(selectedCategory, debouncedSearchQuery, selectedGender, sortBy);
+      if (inStockOnly) {
+        prods = prods.filter((p) => p.stock > 0);
+      }
       setProducts(prods);
     }
     return res;
   };
-
-  const totalCartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const limitedOfferProducts = products
     .filter((p) => p.is_sale || (p.original_price && p.original_price > p.price))
@@ -206,6 +250,7 @@ export function useHomeStore() {
     setVisibleCount,
     cartItems,
     setCartItems,
+    clearCart,
     isCartOpen,
     setIsCartOpen,
     selectedCourier,
@@ -213,6 +258,7 @@ export function useHomeStore() {
     isCheckoutOpen,
     setIsCheckoutOpen,
     wishlist,
+    removeFromWishlist,
     isWishlistOpen,
     setIsWishlistOpen,
     selectedProductForDetail,
@@ -238,5 +284,6 @@ export function useHomeStore() {
     bestOfLifeWearProducts,
     gridDensity,
     setGridDensity,
+    refreshProducts,
   };
 }

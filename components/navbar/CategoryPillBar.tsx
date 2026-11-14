@@ -2,6 +2,7 @@
 'use client';
 
 import React from 'react';
+import { Flame } from 'lucide-react';
 
 interface CategoryPillBarProps {
   selectedGender: string;
@@ -29,7 +30,7 @@ export default function CategoryPillBar({
         { name: 'Kaos & AIRism', slug: 'kaos' },
         { name: 'Celana Chino & Ankle', slug: 'celana' },
         { name: 'Jaket & Outerwear', slug: 'jaket' },
-        { name: 'Limited Offer 🔥', slug: 'sale' },
+        { name: 'Limited Offer', slug: 'sale' },
       ];
     }
     if (selectedGender === 'wanita') {
@@ -39,7 +40,7 @@ export default function CategoryPillBar({
         { name: 'Kaos & AIRism', slug: 'kaos' },
         { name: 'Celana & Bawahan', slug: 'celana' },
         { name: 'Jaket & Outerwear', slug: 'jaket' },
-        { name: 'Limited Offer 🔥', slug: 'sale' },
+        { name: 'Limited Offer', slug: 'sale' },
       ];
     }
     return [
@@ -48,7 +49,7 @@ export default function CategoryPillBar({
       { name: 'Kaos & AIRism', slug: 'kaos' },
       { name: 'Celana Chino & Ankle', slug: 'celana' },
       { name: 'Jaket & Outerwear', slug: 'jaket' },
-      { name: 'Limited Offer 🔥', slug: 'sale' },
+      { name: 'Limited Offer', slug: 'sale' },
     ];
   };
 
@@ -92,7 +93,10 @@ export default function CategoryPillBar({
                       : 'bg-white/15 hover:bg-white/25 text-white'
                 }`}
               >
-                {pill.name}
+                <span className="inline-flex items-center gap-1">
+                  {pill.name}
+                  {pill.slug === 'sale' && <Flame size={12} className={isActive || !isScrolled ? 'text-current' : 'text-[#E60012]'} aria-hidden="true" />}
+                </span>
               </button>
             );
           })}

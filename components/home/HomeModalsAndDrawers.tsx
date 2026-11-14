@@ -49,15 +49,8 @@ export default function HomeModalsAndDrawers({
         isOpen={Boolean(s.selectedProductForDetail)}
         onClose={() => s.setSelectedProductForDetail(null)}
         onAddToCart={(p, size, color, qty) => s.handleAddToCart(p, size, color, qty, true)}
-        onInstantBuy={(p, size, color, qty) => {
-          if (!user) {
-            s.handleAddToCart(p, size, color, qty, false);
-            s.setSelectedProductForDetail(null);
-            openAuthModal();
-            return;
-          }
-          s.handleInstantBuy(p, size, color, qty);
-        }}
+        onInstantBuy={s.handleInstantBuy}
+        onReviewAdded={s.refreshProducts}
         isWishlisted={
           s.selectedProductForDetail ? s.wishlist.some((w) => w.id === s.selectedProductForDetail?.id) : false
         }
@@ -79,10 +72,7 @@ export default function HomeModalsAndDrawers({
         isOpen={s.isWishlistOpen}
         onClose={() => s.setIsWishlistOpen(false)}
         items={s.wishlist}
-        onRemoveFromWishlist={(id) => {
-          const prod = s.wishlist.find((p) => p.id === id);
-          if (prod) s.handleToggleWishlist(prod);
-        }}
+        onRemoveFromWishlist={s.removeFromWishlist}
         onMoveToCart={s.handleMoveToCart}
       />
 
@@ -111,7 +101,7 @@ export default function HomeModalsAndDrawers({
         items={s.cartItems}
         selectedCourier={s.selectedCourier}
         onConfirmOrder={s.handleConfirmOrder}
-        onOrderSuccess={() => s.setCartItems([])}
+        onOrderSuccess={s.clearCart}
       />
 
       <FloatingCartToast

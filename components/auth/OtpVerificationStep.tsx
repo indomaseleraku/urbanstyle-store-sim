@@ -10,7 +10,7 @@ interface OtpVerificationStepProps {
   email: string;
   otpToken: string;
   purpose?: 'login' | 'register';
-  onVerified: () => Promise<void>;
+  onVerified: () => Promise<{ success: boolean; message?: string } | void>;
   onResendSuccess: (newToken: string) => void;
   onCancel: () => void;
 }
@@ -111,6 +111,7 @@ export default function OtpVerificationStep({
           email,
           otp: fullOtp,
           otpToken,
+          purpose,
         }),
       });
       const data = await res.json();
@@ -119,7 +120,11 @@ export default function OtpVerificationStep({
         setIsVerifying(false);
         return;
       }
-      await onVerified();
+      const result = await onVerified();
+      if (result && result.success === false) {
+        setError(result.message || 'Gagal menyelesaikan proses verifikasi.');
+        setIsVerifying(false);
+      }
     } catch {
       setError('Gagal menghubungi server verifikasi OTP.');
       setIsVerifying(false);

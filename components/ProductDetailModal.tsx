@@ -20,6 +20,7 @@ interface ProductDetailModalProps {
   isWishlisted: boolean;
   onToggleWishlist: (product: Product) => void;
   onOpenInfoModal?: (type: ModalType) => void;
+  onReviewAdded?: () => void;
 }
 
 export default function ProductDetailModal({
@@ -31,6 +32,7 @@ export default function ProductDetailModal({
   isWishlisted,
   onToggleWishlist,
   onOpenInfoModal,
+  onReviewAdded,
 }: ProductDetailModalProps) {
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
   const [selectedSize, setSelectedSize] = useState('M');
@@ -137,13 +139,13 @@ export default function ProductDetailModal({
                 <div className="flex items-center gap-2 pt-1">
                   <div className="flex items-center text-amber-500">
                     {[...Array(5)].map((_, i) => (
-                      <Star key={i} size={14} fill={i < Math.floor(product.rating || 5) ? 'currentColor' : 'none'} />
+                      <Star key={i} size={14} fill={i < Math.round(product.rating || 0) ? 'currentColor' : 'none'} />
                     ))}
                   </div>
                   <span className="text-xs font-bold text-zinc-800 font-mono">
-                    {product.rating || 4.8} / 5.0
+                    {Number(product.rating || 0).toFixed(1)} / 5.0
                   </span>
-                  <span className="text-[11px] text-zinc-400">({product.reviews_count || 24} Ulasan)</span>
+                  <span className="text-[11px] text-zinc-400">({product.reviews_count ?? 0} Ulasan)</span>
                 </div>
               </div>
 
@@ -184,7 +186,11 @@ export default function ProductDetailModal({
               />
 
               {/* Accordions (Deskripsi, Bahan, Perawatan, Ulasan) */}
-              <ProductAccordionSection product={product} selectedSize={selectedSize} />
+              <ProductAccordionSection
+                product={product}
+                selectedSize={selectedSize}
+                onReviewAdded={onReviewAdded}
+              />
             </div>
           </div>
         </div>

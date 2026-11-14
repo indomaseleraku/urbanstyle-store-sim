@@ -3,9 +3,9 @@
 // lib/auth-context.tsx
 // Global Authentication & Role-Based Access Control (RBAC) Provider
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { UserProfile, StaffRole } from './types';
-import { INITIAL_USERS } from './mock-data';
+import type { AuthContextType } from './auth-types';
 import {
   loadUserSession,
   persistUserSession,
@@ -13,31 +13,8 @@ import {
   validateUserPassword,
   saveRegisteredCredential,
   resetUserPassword,
-  resolveMemberUser,
   authenticateStaff,
 } from './services/authStorageService';
-
-interface AuthContextType {
-  user: UserProfile | null;
-  isAuthenticated: boolean;
-  isAdmin: boolean;
-  isOwner: boolean;
-  isGudang: boolean;
-  isKasir: boolean;
-  isStaff: boolean;
-  staffRole: StaffRole | null;
-  isLoading: boolean;
-  isAuthModalOpen: boolean;
-  openAuthModal: () => void;
-  closeAuthModal: () => void;
-  login: (email: string, pass: string) => Promise<{ success: boolean; message?: string }>;
-  staffLogin: (email: string, pass: string) => Promise<{ success: boolean; message?: string }>;
-  register: (email: string, pass: string, fullName: string) => Promise<{ success: boolean; message?: string }>;
-  loginWithGoogle: (googleEmail?: string, googleName?: string) => Promise<{ success: boolean; message?: string }>;
-  resetPassword: (email: string, newPass: string, otp?: string, otpToken?: string) => Promise<{ success: boolean; message?: string }>;
-  logout: (redirectTo?: string | unknown) => Promise<void>;
-  updateUser: (data: Partial<UserProfile>) => Promise<void>;
-}
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -47,12 +24,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     const stored = loadUserSession();
-    if (stored) {
-      setUser(stored);
-      persistUserSession(stored).catch(() => {});
+    if (!stored) {
+      setIsLoading(false);
+      return;
     }
-    setIsLoading(false);
+    setUser(stored);
+    (async () => {
+      await persistUserSession(stored).catch(() => {});
+      try {
+        const res = await fetch('/api/account/profile', { cache: 'no-store' });
+        if (cancelled) return;
+        if (res.status === 401) {
+          setUser(null);
+          await persistUserSession(null).catch(() => {});
+        } else if (res.ok) {
+          const json = await res.json();
+          if (json?.success && json.data) {
+            const synced: UserProfile = { ...stored, ...json.data };
+            setUser(synced);
+            await persistUserSession(synced).catch(() => {});
+          }
+        }
+      } catch {}
+      finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const isStaff = Boolean(user && ['admin', 'owner', 'gudang', 'kasir'].includes(user.role));
@@ -75,23 +77,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const passCheck = await validateUserPassword(cleanEmail, pass);
-    if (!passCheck.valid) {
+    if (!passCheck.valid || !passCheck.user) {
       setIsLoading(false);
       return { success: false, message: passCheck.message || 'Kata sandi salah.' };
     }
 
-    const found = passCheck.user || resolveMemberUser(cleanEmail);
-    if (found) {
-      setUser(found);
-      await persistUserSession(found, passCheck.token);
-      setIsLoading(false);
-      setIsAuthModalOpen(false);
-      if (['admin', 'owner', 'gudang', 'kasir'].includes(found.role)) window.location.href = '/admin';
-      return { success: true };
-    }
-
+    const found = passCheck.user;
+    setUser(found);
+    await persistUserSession(found, passCheck.token);
     setIsLoading(false);
-    return { success: false, message: 'Email belum terdaftar. Silakan pilih tab Daftar Akun.' };
+    setIsAuthModalOpen(false);
+    if (['admin', 'owner', 'gudang', 'kasir'].includes(found.role)) window.location.href = '/admin';
+    return { success: true };
   };
 
   const staffLogin = async (email: string, pass: string): Promise<{ success: boolean; message?: string }> => {
@@ -129,18 +126,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       created_at: new Date().toISOString(),
     };
 
-    await saveRegisteredCredential(newMember, pass.trim());
-    setUser(newMember);
-    await persistUserSession(newMember);
+    const saved = await saveRegisteredCredential(newMember, pass.trim());
+    if (!saved.success || !saved.user) {
+      setIsLoading(false);
+      return { success: false, message: saved.message || 'Gagal mendaftar akun.' };
+    }
+    setUser(saved.user);
+    await persistUserSession(saved.user, saved.token);
     setIsLoading(false);
     return { success: true };
   };
 
-  const loginWithGoogle = async (googleEmail = '', googleName = '') => {
+  const loginWithGoogle = async (googleEmail = '', googleName = '', accessToken = '') => {
     setIsLoading(true);
-    const profile = await resolveOrCreateGoogleUser(googleEmail, googleName);
-    setUser(profile);
-    await persistUserSession(profile);
+    const res = await resolveOrCreateGoogleUser(googleEmail, googleName, accessToken);
+    if (!res.success || !res.user) {
+      setIsLoading(false);
+      return { success: false, message: res.message || 'Autentikasi Google gagal.' };
+    }
+    setUser(res.user);
+    await persistUserSession(res.user, res.token);
     setIsLoading(false);
     setIsAuthModalOpen(false);
     return { success: true };
@@ -163,18 +168,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async (redirectTo?: string | unknown) => {
     setUser(null);
     await persistUserSession(null);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('urbanstyle_cart');
+      localStorage.removeItem('urbanstyle_courier');
+    }
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch {}
     window.location.href = typeof redirectTo === 'string' ? redirectTo : '/';
   };
 
-  const updateUser = async (data: Partial<UserProfile>) => {
-    if (!user) return;
-    const updated = { ...user, ...data };
-    setUser(updated);
-    await persistUserSession(updated);
+  const updateUser = async (data: Partial<UserProfile>): Promise<{ success: boolean; message?: string }> => {
+    if (!user) return { success: false, message: 'Sesi pengguna tidak ditemukan.' };
+    try {
+      const res = await fetch('/api/account/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.success) {
+        return { success: false, message: json?.message || 'Gagal menyimpan perubahan profil.' };
+      }
+      const updated: UserProfile = { ...user, ...data, ...(json.data || {}) };
+      setUser(updated);
+      await persistUserSession(updated);
+      return { success: true };
+    } catch {
+      return { success: false, message: 'Koneksi ke server gagal saat memperbarui profil.' };
+    }
   };
+
+  const openAuthModal = useCallback(() => setIsAuthModalOpen(true), []);
+  const closeAuthModal = useCallback(() => setIsAuthModalOpen(false), []);
 
   return (
     <AuthContext.Provider
@@ -189,8 +215,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         staffRole,
         isLoading,
         isAuthModalOpen,
-        openAuthModal: () => setIsAuthModalOpen(true),
-        closeAuthModal: () => setIsAuthModalOpen(false),
+        openAuthModal,
+        closeAuthModal,
         login,
         staffLogin,
         register,

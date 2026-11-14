@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAdminSuite } from '@/lib/admin-suite/AdminSuiteContext';
 import { Product } from '@/lib/admin-suite/types';
-import { Plus } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 
 interface ProductCatalogAddModalProps {
   isOpen: boolean;
@@ -18,64 +18,65 @@ const STANDARD_CATEGORIES = [
   'Celana Pendek',
 ];
 
+const DEFAULT_FORM = {
+  name: '',
+  sku: '',
+  category: 'Kaos',
+  price: 249000,
+  originalPrice: 299000,
+  stock: 25,
+  safetyStock: 10,
+  rackLocation: 'Rak A-01 / Bin 01',
+  description: '',
+  imageUrl: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=600&q=80',
+  status: 'active' as Product['status'],
+};
+
 export const ProductCatalogAddModal: React.FC<ProductCatalogAddModalProps> = ({ isOpen, onClose }) => {
   const { addProduct } = useAdminSuite();
-
-  const [form, setForm] = useState({
-    name: '',
-    sku: '',
-    category: 'Kaos',
-    price: 249000,
-    originalPrice: 299000,
-    stock: 25,
-    safetyStock: 10,
-    rackLocation: 'Rak A-01 / Bin 01',
-    description: '',
-    imageUrl: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=600&q=80',
-    status: 'active' as Product['status'],
-  });
-
+  const [form, setForm] = useState(DEFAULT_FORM);
   const [isCustomCategory, setIsCustomCategory] = useState(false);
   const [customCategory, setCustomCategory] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
 
   if (!isOpen) return null;
 
-  const handleAddSubmit = (e: React.FormEvent) => {
+  const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name || !form.sku) return;
+    setFormError('');
+    if (!form.name.trim() || !form.sku.trim()) {
+      setFormError('Nama produk dan kode SKU wajib diisi.');
+      return;
+    }
+    if (form.price < 0 || form.stock < 0 || form.safetyStock < 0) {
+      setFormError('Harga, stok, dan safety stock tidak boleh bernilai negatif.');
+      return;
+    }
 
     const finalCategory = isCustomCategory ? customCategory.trim() || 'Lainnya' : form.category;
-
-    addProduct({
-      name: form.name,
-      sku: form.sku.toUpperCase(),
-      category: finalCategory,
-      price: Number(form.price),
-      originalPrice: form.originalPrice ? Number(form.originalPrice) : undefined,
-      stock: Number(form.stock),
-      safetyStock: Number(form.safetyStock),
-      rackLocation: form.rackLocation,
-      description: form.description || 'Produk kurasi UrbanStyle LifeWear berkualitas tinggi.',
-      imageUrl: form.imageUrl,
-      status: form.status,
-    });
-
-    onClose();
-    setForm({
-      name: '',
-      sku: '',
-      category: 'Kaos',
-      price: 249000,
-      originalPrice: 299000,
-      stock: 25,
-      safetyStock: 10,
-      rackLocation: 'Rak A-01 / Bin 01',
-      description: '',
-      imageUrl: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=600&q=80',
-      status: 'active',
-    });
-    setIsCustomCategory(false);
-    setCustomCategory('');
+    setIsSubmitting(true);
+    try {
+      await addProduct({
+        name: form.name.trim(),
+        sku: form.sku.toUpperCase().trim(),
+        category: finalCategory,
+        price: Number(form.price),
+        originalPrice: form.originalPrice > form.price ? Number(form.originalPrice) : undefined,
+        stock: Number(form.stock),
+        safetyStock: Number(form.safetyStock),
+        rackLocation: form.rackLocation,
+        description: form.description || 'Produk kurasi UrbanStyle LifeWear berkualitas tinggi.',
+        imageUrl: form.imageUrl,
+        status: form.status,
+      });
+      setForm(DEFAULT_FORM);
+      setIsCustomCategory(false);
+      setCustomCategory('');
+      onClose();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -83,12 +84,18 @@ export const ProductCatalogAddModal: React.FC<ProductCatalogAddModalProps> = ({ 
       <div className="bg-white dark:bg-slate-900 rounded-lg max-w-lg w-full shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden max-h-[90vh] flex flex-col my-auto">
         <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <h3 className="text-sm font-bold text-slate-900 dark:text-white">Tambah Produk Baru ke Etalase</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-xs cursor-pointer">
-            ✕
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer" aria-label="Tutup">
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         <form onSubmit={handleAddSubmit} className="p-4 space-y-3 text-xs overflow-y-auto">
+          {formError && (
+            <div className="p-2 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded">
+              {formError}
+            </div>
+          )}
+
           <div>
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Nama Produk</label>
             <input
@@ -128,18 +135,15 @@ export const ProductCatalogAddModal: React.FC<ProductCatalogAddModalProps> = ({ 
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-800 dark:text-white focus:outline-none focus:bg-white dark:focus:bg-slate-800 cursor-pointer font-medium"
               >
                 {STANDARD_CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
+                  <option key={cat} value={cat}>{cat}</option>
                 ))}
                 <option value="__custom__">+ Tambah Kategori Baru...</option>
               </select>
             </div>
           </div>
 
-          {/* Input Kategori Kustom jika dipilih */}
           {isCustomCategory && (
-            <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-700 rounded-lg space-y-1 animate-in fade-in duration-200">
+            <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-700 rounded-lg space-y-1">
               <label className="block font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
                 <Plus size={12} />
                 <span>Nama Kategori Baru</span>
@@ -161,9 +165,10 @@ export const ProductCatalogAddModal: React.FC<ProductCatalogAddModalProps> = ({ 
               <input
                 type="number"
                 required
+                min="0"
                 step="1000"
                 value={form.price}
-                onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
+                onChange={(e) => setForm({ ...form, price: Math.max(0, Number(e.target.value) || 0) })}
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-800 dark:text-white font-mono focus:outline-none focus:bg-white dark:focus:bg-slate-800"
               />
             </div>
@@ -171,9 +176,10 @@ export const ProductCatalogAddModal: React.FC<ProductCatalogAddModalProps> = ({ 
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Harga Coret (Opsional)</label>
               <input
                 type="number"
+                min="0"
                 step="1000"
                 value={form.originalPrice}
-                onChange={(e) => setForm({ ...form, originalPrice: Number(e.target.value) })}
+                onChange={(e) => setForm({ ...form, originalPrice: Math.max(0, Number(e.target.value) || 0) })}
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-800 dark:text-white font-mono focus:outline-none focus:bg-white dark:focus:bg-slate-800"
               />
             </div>
@@ -187,7 +193,7 @@ export const ProductCatalogAddModal: React.FC<ProductCatalogAddModalProps> = ({ 
                 required
                 min="0"
                 value={form.stock}
-                onChange={(e) => setForm({ ...form, stock: Number(e.target.value) })}
+                onChange={(e) => setForm({ ...form, stock: Math.max(0, Number(e.target.value) || 0) })}
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-800 dark:text-white font-mono focus:outline-none focus:bg-white dark:focus:bg-slate-800"
               />
             </div>
@@ -197,7 +203,7 @@ export const ProductCatalogAddModal: React.FC<ProductCatalogAddModalProps> = ({ 
                 type="number"
                 min="1"
                 value={form.safetyStock}
-                onChange={(e) => setForm({ ...form, safetyStock: Number(e.target.value) })}
+                onChange={(e) => setForm({ ...form, safetyStock: Math.max(1, Number(e.target.value) || 1) })}
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-slate-800 dark:text-white font-mono focus:outline-none focus:bg-white dark:focus:bg-slate-800"
               />
             </div>
@@ -224,9 +230,10 @@ export const ProductCatalogAddModal: React.FC<ProductCatalogAddModalProps> = ({ 
             </button>
             <button
               type="submit"
-              className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold rounded-lg shadow-sm cursor-pointer"
+              disabled={isSubmitting}
+              className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 text-white font-semibold rounded-lg shadow-sm cursor-pointer"
             >
-              Simpan Produk
+              {isSubmitting ? 'Menyimpan...' : 'Simpan Produk'}
             </button>
           </div>
         </form>

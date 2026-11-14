@@ -1,36 +1,55 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAdminSuite } from '@/lib/admin-suite/AdminSuiteContext';
 import { CheckCircle2, Save } from 'lucide-react';
 
 export const StockOpname: React.FC = () => {
   const { products, adjustStock } = useAdminSuite();
 
-  const [physicalCounts, setPhysicalCounts] = useState<{ [sku: string]: number }>(() => {
-    const initial: { [sku: string]: number } = {};
-    products.forEach((p) => {
-      initial[p.sku] = p.stock;
-    });
-    return initial;
-  });
-
+  const [physicalCounts, setPhysicalCounts] = useState<{ [sku: string]: number }>({});
+  const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
-  const handleCountChange = (sku: string, val: number) => {
-    setPhysicalCounts((prev) => ({ ...prev, [sku]: Math.max(0, val) }));
-  };
-
-  const handleSaveOpname = () => {
-    products.forEach((p) => {
-      const physical = physicalCounts[p.sku] !== undefined ? physicalCounts[p.sku] : p.stock;
-      const diff = physical - p.stock;
-      if (diff !== 0) {
-        adjustStock(p.sku, diff, 'Audit Fisik');
-      }
+  useEffect(() => {
+    setPhysicalCounts((prev) => {
+      const next: { [sku: string]: number } = {};
+      products.forEach((p) => {
+        next[p.sku] = prev[p.sku] !== undefined ? prev[p.sku] : p.stock;
+      });
+      return next;
     });
+  }, [products]);
 
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 3000);
+  const handleCountChange = (sku: string, rawVal: string) => {
+    const parsed = Number.parseInt(rawVal, 10);
+    const safeVal = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+    setPhysicalCounts((prev) => ({ ...prev, [sku]: safeVal }));
   };
+
+  const handleSaveOpname = async () => {
+    const diffs = products
+      .map((p) => {
+        const physical = physicalCounts[p.sku] !== undefined ? physicalCounts[p.sku] : p.stock;
+        return { sku: p.sku, diff: physical - p.stock };
+      })
+      .filter((d) => d.diff !== 0);
+
+    if (diffs.length === 0) return;
+    setIsSaving(true);
+    try {
+      for (const item of diffs) {
+        await adjustStock(item.sku, item.diff, 'Audit Fisik');
+      }
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const pendingChangesCount = products.filter((p) => {
+    const physical = physicalCounts[p.sku] !== undefined ? physicalCounts[p.sku] : p.stock;
+    return physical !== p.stock;
+  }).length;
 
   return (
     <div className="space-y-4 sm:space-y-5 w-full max-w-full">
@@ -46,17 +65,18 @@ export const StockOpname: React.FC = () => {
 
         <button
           onClick={handleSaveOpname}
-          className="px-3.5 py-1.5 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors self-start sm:self-auto border border-slate-800 dark:border-slate-700 min-h-[36px]"
+          disabled={isSaving || pendingChangesCount === 0}
+          className="px-3.5 py-1.5 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors self-start sm:self-auto border border-slate-800 dark:border-slate-700 min-h-[36px] cursor-pointer"
         >
           <Save className="w-3.5 h-3.5" />
-          Simpan Hasil Opname
+          {isSaving ? 'Menyimpan...' : `Simpan Hasil Opname (${pendingChangesCount})`}
         </button>
       </div>
 
       {savedSuccess && (
         <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-          <span>Hasil audit stock opname berhasil disinkronkan ke seluruh sistem!</span>
+          <span>Hasil audit stock opname berhasil disinkronkan ke Supabase!</span>
         </div>
       )}
 
@@ -91,7 +111,7 @@ export const StockOpname: React.FC = () => {
                         type="number"
                         min="0"
                         value={physical}
-                        onChange={(e) => handleCountChange(p.sku, Number(e.target.value))}
+                        onChange={(e) => handleCountChange(p.sku, e.target.value)}
                         className="w-24 text-center bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded py-1 px-2 font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:bg-white dark:focus:bg-slate-800"
                       />
                     </td>

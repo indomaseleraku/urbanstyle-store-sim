@@ -18,30 +18,32 @@ const STANDARD_CATEGORIES = [
 ];
 
 export const ProductCatalog: React.FC = () => {
-  const { products } = useAdminSuite();
+  const { products, globalSearch } = useAdminSuite();
 
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
-  // Dynamically include any existing categories from products that aren't in standard
   const dynamicCategories = Array.from(new Set(products.map((p) => p.category))).filter(
     (c) => Boolean(c) && !STANDARD_CATEGORIES.includes(c)
   );
   const categories = [...STANDARD_CATEGORIES, ...dynamicCategories];
 
+  const query = (search || globalSearch).trim().toLowerCase();
+
   const filteredProducts = products.filter((p) => {
     const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
     const matchesSearch =
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.sku.toLowerCase().includes(search.toLowerCase());
+      !query ||
+      p.name.toLowerCase().includes(query) ||
+      p.sku.toLowerCase().includes(query) ||
+      p.category.toLowerCase().includes(query);
     return matchesCategory && matchesSearch;
   });
 
   return (
     <div className="space-y-4 sm:space-y-5 w-full max-w-full">
-      {/* Title & Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-200 dark:border-slate-800">
         <div>
           <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight">
@@ -61,7 +63,6 @@ export const ProductCatalog: React.FC = () => {
         </button>
       </div>
 
-      {/* Filter and Search */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
         <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto text-xs pb-1 sm:pb-0 no-scrollbar">
           {categories.map((c) => (
@@ -91,13 +92,8 @@ export const ProductCatalog: React.FC = () => {
         </div>
       </div>
 
-      {/* Product Grid / Table */}
       <ProductCatalogTable products={filteredProducts} setEditingProduct={setEditingProduct} />
-
-      {/* Modal Tambah Produk */}
       <ProductCatalogAddModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} />
-
-      {/* Modal Edit Produk */}
       <ProductCatalogEditModal editingProduct={editingProduct} setEditingProduct={setEditingProduct} />
     </div>
   );

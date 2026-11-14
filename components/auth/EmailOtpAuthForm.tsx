@@ -48,8 +48,9 @@ export default function EmailOtpAuthForm({ onSuccess, onTabChange }: EmailOtpAut
     if (!cleanEmail || !cleanEmail.includes('@')) {
       return setErrorMsg('Masukkan alamat email yang valid.');
     }
-    if (!cleanPass || cleanPass.length < 4) {
-      return setErrorMsg('Kata sandi minimal 4 karakter.');
+    const minPassLen = activeTab === 'register' ? 8 : 4;
+    if (!cleanPass || cleanPass.length < minPassLen) {
+      return setErrorMsg(`Kata sandi minimal ${minPassLen} karakter.`);
     }
 
     // 1. Masuk Akun (Login): Langsung masuk dengan Email & Password (TANPA OTP)
@@ -96,7 +97,7 @@ export default function EmailOtpAuthForm({ onSuccess, onTabChange }: EmailOtpAut
     }
   };
 
-  const handleRegisterOtpVerified = async () => {
+  const handleRegisterOtpVerified = async (): Promise<{ success: boolean; message?: string }> => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPass = password.trim();
 
@@ -107,6 +108,7 @@ export default function EmailOtpAuthForm({ onSuccess, onTabChange }: EmailOtpAut
     } else {
       setErrorMsg(res.message || 'Gagal mendaftar akun.');
     }
+    return res;
   };
 
   if (isForgotPassword) {

@@ -177,17 +177,17 @@ export const BANK_ACCOUNTS: Record<string, { bankName: string; accountNumber: st
   BCA: {
     bankName: 'Bank Central Asia (BCA)',
     accountNumber: '8830192844',
-    holderName: 'KIMY EKA ARDIANSYAH / URBANSTYLE',
+    holderName: 'PT URBANSTYLE INDONESIA',
   },
   Mandiri: {
     bankName: 'Bank Mandiri',
     accountNumber: '164009928101',
-    holderName: 'KIMY EKA ARDIANSYAH / URBANSTYLE',
+    holderName: 'PT URBANSTYLE INDONESIA',
   },
   BRI: {
     bankName: 'Bank Rakyat Indonesia (BRI)',
     accountNumber: '012301001928502',
-    holderName: 'KIMY EKA ARDIANSYAH',
+    holderName: 'PT URBANSTYLE INDONESIA',
   },
   BNI: {
     bankName: 'Bank Negara Indonesia (BNI)',

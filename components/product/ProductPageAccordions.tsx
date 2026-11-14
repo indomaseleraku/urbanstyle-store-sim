@@ -1,51 +1,74 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Product } from '@/lib/types';
+import React, { useState, useEffect } from 'react';
+import { Product, Review } from '@/lib/types';
 import { ChevronDown, ChevronUp, Ruler, Star, MessageSquarePlus } from 'lucide-react';
 import { dataStore } from '@/lib/store';
 
 interface ProductPageAccordionsProps {
   product: Product;
   selectedSize: string;
+  onReviewAdded?: () => void;
 }
 
 export const ProductPageAccordions: React.FC<ProductPageAccordionsProps> = ({
   product,
   selectedSize,
+  onReviewAdded,
 }) => {
   const [openAccordion, setOpenAccordion] = useState<string | null>('desc');
+  const [reviews, setReviews] = useState<Review[]>(product.reviews || []);
   const [isAddingReview, setIsAddingReview] = useState(false);
   const [reviewerName, setReviewerName] = useState('');
   const [newRating, setNewRating] = useState(5);
+  const [fitRating, setFitRating] = useState<'Agak Sempit' | 'Pas Sesuai Ukuran' | 'Agak Longgar'>('Pas Sesuai Ukuran');
   const [newComment, setNewComment] = useState('');
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  const [reviewError, setReviewError] = useState('');
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
+
+  useEffect(() => {
+    setReviews(product.reviews || []);
+  }, [product.id, product.reviews]);
+
+  const totalReviews = reviews.length;
+  const smallCount = reviews.filter((r) => r.fit_rating === 'Agak Sempit').length;
+  const largeCount = reviews.filter((r) => r.fit_rating === 'Agak Longgar').length;
+  const smallPct = totalReviews > 0 ? Math.round((smallCount / totalReviews) * 100) : 0;
+  const largePct = totalReviews > 0 ? Math.round((largeCount / totalReviews) * 100) : 0;
+  const fitPct = totalReviews > 0 ? Math.max(0, 100 - smallPct - largePct) : 0;
+  const dotLeftPct = totalReviews > 0 ? Math.round((smallPct * 15 + fitPct * 50 + largePct * 85) / 100) : 50;
 
   const handleAddReview = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reviewerName.trim() || !newComment.trim()) return;
+    setReviewError('');
+    setIsSubmittingReview(true);
 
-    const newRev = await dataStore.addReview(product.id, {
-      reviewer_name: reviewerName,
-      rating: newRating,
-      size_purchased: selectedSize,
-      fit_rating: 'Pas Sesuai Ukuran',
-      comment: newComment,
-    });
+    try {
+      const newRev = await dataStore.addReview(product.id, {
+        reviewer_name: reviewerName.trim(),
+        rating: newRating,
+        size_purchased: selectedSize,
+        fit_rating: fitRating,
+        comment: newComment.trim(),
+      });
 
-    if (!product.reviews) product.reviews = [];
-    if (!product.reviews.some((r) => r.id === newRev.id)) {
-      product.reviews.unshift(newRev);
+      setReviews((prev) => [newRev, ...prev.filter((r) => r.id !== newRev.id)]);
+      onReviewAdded?.();
+      setReviewSubmitted(true);
+      setTimeout(() => {
+        setIsAddingReview(false);
+        setReviewSubmitted(false);
+        setReviewerName('');
+        setNewComment('');
+        setFitRating('Pas Sesuai Ukuran');
+      }, 1200);
+    } catch (err: unknown) {
+      setReviewError(err instanceof Error ? err.message : 'Gagal mengirim ulasan.');
+    } finally {
+      setIsSubmittingReview(false);
     }
-    product.reviews_count = product.reviews.length;
-
-    setReviewSubmitted(true);
-    setTimeout(() => {
-      setIsAddingReview(false);
-      setReviewSubmitted(false);
-      setReviewerName('');
-      setNewComment('');
-    }, 1500);
   };
 
   return (
@@ -97,7 +120,7 @@ export const ProductPageAccordions: React.FC<ProductPageAccordionsProps> = ({
           onClick={() => setOpenAccordion(openAccordion === 'reviews' ? null : 'reviews')}
           className="w-full py-3 flex items-center justify-between text-left font-bold uppercase text-zinc-900 cursor-pointer"
         >
-          <span>Ulasan Pembeli ({product.reviews?.length || 0})</span>
+          <span>Ulasan Pembeli ({reviews.length})</span>
           {openAccordion === 'reviews' ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </button>
         {openAccordion === 'reviews' && (
@@ -110,35 +133,31 @@ export const ProductPageAccordions: React.FC<ProductPageAccordionsProps> = ({
                   <span>Tingkat Kecocokan Ukuran (Fit Rating)</span>
                 </span>
                 <span className="font-bold text-[#E60012] text-[11px] font-mono">
-                  85% Pelanggan: Pas Sesuai Ukuran (True to Size)
+                  {totalReviews > 0
+                    ? `${fitPct}% Pelanggan: Pas Sesuai Ukuran (${totalReviews} Ulasan)`
+                    : 'Belum ada data ulasan untuk produk ini'}
                 </span>
               </div>
 
               {/* Visual Meter Bar */}
               <div className="relative pt-3 pb-1">
                 <div className="h-2 w-full bg-zinc-200 rounded-none relative">
-                  <div
-                    className="absolute top-0 bottom-0 bg-[#111111] rounded-none"
-                    style={{ left: '35%', width: '30%' }}
-                  />
-                  <div
-                    className="absolute -top-1 w-4 h-4 bg-[#E60012] border-2 border-white rounded-none shadow-sm -ml-2"
-                    style={{ left: '50%' }}
-                  />
+                  <div className="absolute top-0 bottom-0 bg-[#111111] rounded-none" style={{ left: '35%', width: '30%' }} />
+                  <div className="absolute -top-1 w-4 h-4 bg-[#E60012] border-2 border-white rounded-none shadow-sm -ml-2" style={{ left: `${dotLeftPct}%` }} />
                 </div>
 
                 <div className="flex justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-wider pt-2">
-                  <span>Kekecilan (8%)</span>
-                  <span className="text-zinc-900 font-black">Pas Sesuai Ukuran (85%)</span>
-                  <span>Kebesaran (7%)</span>
+                  <span>Agak Sempit ({smallPct}%)</span>
+                  <span className="text-zinc-900 font-black">Pas Sesuai Ukuran ({fitPct}%)</span>
+                  <span>Agak Longgar ({largePct}%)</span>
                 </div>
               </div>
             </div>
 
             {/* Review List */}
-            {product.reviews && product.reviews.length > 0 ? (
+            {reviews.length > 0 ? (
               <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                {product.reviews.map((r) => (
+                {reviews.map((r) => (
                   <div key={r.id} className="p-3 bg-zinc-50 border border-zinc-200 space-y-1 rounded-none">
                     <div className="flex justify-between">
                       <span className="font-bold text-zinc-900 text-xs">{r.reviewer_name}</span>
@@ -172,24 +191,25 @@ export const ProductPageAccordions: React.FC<ProductPageAccordionsProps> = ({
             ) : (
               <form onSubmit={handleAddReview} className="p-3 bg-zinc-50 border border-zinc-300 space-y-2 rounded-none">
                 <p className="font-bold text-xs uppercase text-zinc-900">Ulasan Pembeli Baru</p>
+                {reviewError && <p className="p-2 bg-red-50 border border-red-200 text-red-700 text-[11px] font-semibold">{reviewError}</p>}
                 <input
                   type="text"
                   required
-                  placeholder="Nama Anda (contoh: Kimy Eka)"
+                  placeholder="Nama lengkap Anda"
                   value={reviewerName}
                   onChange={(e) => setReviewerName(e.target.value)}
                   className="w-full p-2 border border-zinc-300 text-base md:text-xs bg-white focus:outline-none rounded-none"
                 />
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="font-bold">Bintang:</span>
-                  <select
-                    value={newRating}
-                    onChange={(e) => setNewRating(Number(e.target.value))}
-                    className="p-1 border border-zinc-300 bg-white rounded-none"
-                  >
-                    <option value={5}>5 Bintang (Sangat Puas)</option>
-                    <option value={4}>4 Bintang (Puas)</option>
-                    <option value={3}>3 Bintang (Cukup)</option>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <select value={newRating} onChange={(e) => setNewRating(Number(e.target.value))} className="p-1.5 border border-zinc-300 bg-white rounded-none">
+                    {[5, 4, 3, 2, 1].map((n) => (
+                      <option key={n} value={n}>{n} Bintang</option>
+                    ))}
+                  </select>
+                  <select value={fitRating} onChange={(e) => setFitRating(e.target.value as 'Agak Sempit' | 'Pas Sesuai Ukuran' | 'Agak Longgar')} className="p-1.5 border border-zinc-300 bg-white rounded-none">
+                    <option value="Pas Sesuai Ukuran">Pas Sesuai Ukuran</option>
+                    <option value="Agak Sempit">Agak Sempit</option>
+                    <option value="Agak Longgar">Agak Longgar</option>
                   </select>
                 </div>
                 <textarea
@@ -203,9 +223,10 @@ export const ProductPageAccordions: React.FC<ProductPageAccordionsProps> = ({
                 <div className="flex gap-2">
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-zinc-900 text-white text-xs font-bold uppercase hover:bg-[#E60012] rounded-none cursor-pointer"
+                    disabled={isSubmittingReview}
+                    className="px-4 py-2 bg-zinc-900 text-white text-xs font-bold uppercase hover:bg-[#E60012] rounded-none cursor-pointer disabled:opacity-50"
                   >
-                    {reviewSubmitted ? 'Tersimpan!' : 'Kirim Ulasan'}
+                    {reviewSubmitted ? 'Tersimpan!' : isSubmittingReview ? 'Mengirim...' : 'Kirim Ulasan'}
                   </button>
                   <button
                     type="button"

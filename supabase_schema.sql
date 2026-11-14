@@ -1,5 +1,5 @@
 -- ==============================================================================
--- URBANSTYLE STORE - SUPABASE SCHEMA V4.4 (HARDENED PRODUCTION MIRROR)
+-- URBANSTYLE STORE - SUPABASE SCHEMA V4.5 (HARDENED PRODUCTION MIRROR)
 -- Project: qrrdfbdzcozjdaysfimi  |  Disinkronkan dari database live: 2026-11-15
 --
 -- AMAN dijalankan ulang: hanya CREATE ... IF NOT EXISTS, tidak menghapus data.
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS products (
     care_instructions TEXT,
     size_measurements JSONB DEFAULT '[]'::jsonb,
     gallery_images    TEXT[] DEFAULT ARRAY[]::TEXT[],
-    rating            NUMERIC(2,1) DEFAULT 4.8,
+    rating            NUMERIC(2,1) DEFAULT 0,
     reviews_count     INTEGER DEFAULT 0,
     sku               VARCHAR(50),
     safety_stock      INTEGER DEFAULT 10,
@@ -323,6 +323,93 @@ $$;
 REVOKE ALL ON FUNCTION atomic_increment_coupon_usage(BIGINT) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION atomic_increment_coupon_usage(BIGINT) TO service_role;
 
+CREATE OR REPLACE FUNCTION atomic_increment_stock(p_product_id BIGINT, p_qty INT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF p_qty IS NULL OR p_qty <= 0 THEN
+    RAISE EXCEPTION 'Kuantitas restock harus lebih dari 0.';
+  END IF;
+  UPDATE public.products
+  SET stock = GREATEST(0, COALESCE(stock, 0) + p_qty)
+  WHERE id = p_product_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Produk ID % tidak ditemukan untuk restock.', p_product_id;
+  END IF;
+  RETURN TRUE;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION atomic_increment_stock(BIGINT, INT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION atomic_increment_stock(BIGINT, INT) TO service_role;
+
+CREATE OR REPLACE FUNCTION atomic_claim_coupon(p_coupon_id BIGINT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  UPDATE public.coupons
+  SET used_count = COALESCE(used_count, 0) + 1
+  WHERE id = p_coupon_id
+    AND is_active = TRUE
+    AND (valid_until IS NULL OR valid_until > NOW())
+    AND (usage_limit IS NULL OR COALESCE(used_count, 0) < usage_limit);
+  RETURN FOUND;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION atomic_claim_coupon(BIGINT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION atomic_claim_coupon(BIGINT) TO service_role;
+
+CREATE OR REPLACE FUNCTION atomic_release_coupon(p_coupon_id BIGINT)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  UPDATE public.coupons
+  SET used_count = GREATEST(0, COALESCE(used_count, 0) - 1)
+  WHERE id = p_coupon_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION atomic_release_coupon(BIGINT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION atomic_release_coupon(BIGINT) TO service_role;
+
+CREATE TABLE IF NOT EXISTS auth_otp_challenges (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email        TEXT NOT NULL,
+    purpose      VARCHAR(20) NOT NULL CHECK (purpose IN ('login', 'register', 'reset')),
+    otp_hash     TEXT NOT NULL,
+    nonce        TEXT NOT NULL UNIQUE,
+    attempts     INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 5,
+    expires_at   TIMESTAMPTZ NOT NULL,
+    verified_at  TIMESTAMPTZ,
+    consumed_at  TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS newsletter_subscribers (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email         TEXT NOT NULL UNIQUE,
+    source        VARCHAR(50) NOT NULL DEFAULT 'footer',
+    subscribed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS store_settings (
+    key        VARCHAR(100) PRIMARY KEY,
+    value      JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_by TEXT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- ------------------------------------------------------------------------------
 -- 7. ROW LEVEL SECURITY (STRICT LEAST-PRIVILEGE)
 -- ------------------------------------------------------------------------------
@@ -341,6 +428,9 @@ ALTER TABLE admin_stock_adjustments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_expenses          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_inbound_shipments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_activity_logs     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE auth_otp_challenges     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE newsletter_subscribers  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE store_settings          ENABLE ROW LEVEL SECURITY;
 
 DO $$
 DECLARE r RECORD;
@@ -353,7 +443,8 @@ BEGIN
          'categories','products','reviews','wishlists','coupons',
          'user_credentials','profiles','user_addresses','staff_users',
          'orders','order_items',
-         'admin_stock_adjustments','admin_expenses','admin_inbound_shipments','admin_activity_logs'
+         'admin_stock_adjustments','admin_expenses','admin_inbound_shipments','admin_activity_logs',
+         'auth_otp_challenges','newsletter_subscribers','store_settings'
        )
   LOOP
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', r.policyname, r.tablename);
@@ -382,6 +473,9 @@ CREATE POLICY "Service Role Full Stock Adj"        ON admin_stock_adjustments FO
 CREATE POLICY "Service Role Full Expenses"         ON admin_expenses          FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Service Role Full Inbound"          ON admin_inbound_shipments FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Service Role Full Activity Logs"    ON admin_activity_logs     FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service Role Full OTP Challenges"   ON auth_otp_challenges     FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service Role Full Newsletter"       ON newsletter_subscribers  FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service Role Full Store Settings"   ON store_settings          FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 -- ------------------------------------------------------------------------------
 -- 8. SEED DATA (tidak menimpa data yang sudah ada)

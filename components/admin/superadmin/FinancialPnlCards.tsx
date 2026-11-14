@@ -49,7 +49,7 @@ export const FinancialPnlCards: React.FC<FinancialPnlCardsProps> = ({
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              Oktober 2026
+              Bulan Ini
             </button>
             <button
               onClick={() => setPeriod('q3')}
@@ -59,7 +59,7 @@ export const FinancialPnlCards: React.FC<FinancialPnlCardsProps> = ({
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              Q3
+              90 Hari
             </button>
             <button
               onClick={() => setPeriod('ytd')}
@@ -91,7 +91,7 @@ export const FinancialPnlCards: React.FC<FinancialPnlCardsProps> = ({
             {formatRupiah(totalRevenue)}
           </div>
           <p className="text-[10px] sm:text-[11px] text-emerald-700 dark:text-emerald-400 font-medium mt-0.5">
-            +22.4% MoM
+            Realisasi Live DB
           </p>
         </div>
 

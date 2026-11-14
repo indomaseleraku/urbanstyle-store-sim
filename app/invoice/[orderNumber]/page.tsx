@@ -1,12 +1,16 @@
 import React from 'react';
 import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { dataStore } from '@/lib/store';
-import { 
-  ArrowLeft, 
-  CheckCircle2, 
-  QrCode, 
-  Truck, 
-  Building2 
+import { verifySessionToken } from '@/lib/services/cryptoSession';
+import { STAFF_ROLES } from '@/lib/services/sessionServerHelper';
+import {
+  ArrowLeft,
+  CheckCircle2,
+  QrCode,
+  Truck,
+  Building2,
+  Lock,
 } from 'lucide-react';
 import { InvoicePrintButton } from '@/components/InvoiceActions';
 import InvoicePaymentSection from '@/components/invoice/InvoicePaymentSection';
@@ -15,6 +19,32 @@ import InvoicePriceSummary from '@/components/invoice/InvoicePriceSummary';
 export default async function InvoicePage({ params }: { params: Promise<{ orderNumber: string }> }) {
   const resolvedParams = await params;
   const orderNumber = resolvedParams.orderNumber;
+
+  const cookieStore = await cookies();
+  const sessionToken = cookieStore.get('urbanstyle_session_token')?.value;
+  const session = await verifySessionToken(sessionToken);
+
+  if (!session.valid || !session.userId || !session.role) {
+    return (
+      <div className="min-h-screen bg-zinc-100 flex items-center justify-center p-4">
+        <div className="bg-white p-8 border border-zinc-300 max-w-md w-full text-center space-y-4">
+          <Lock className="w-8 h-8 mx-auto text-[#E60012]" />
+          <p className="text-xs uppercase font-bold tracking-widest text-[#E60012]">Akses Terproteksi</p>
+          <h1 className="text-lg font-black uppercase text-zinc-900">Masuk untuk Melihat Faktur</h1>
+          <p className="text-xs text-zinc-600">
+            Faktur digital #{orderNumber} berisi data pribadi pemesan. Silakan masuk dengan akun pemesan terlebih dahulu.
+          </p>
+          <Link
+            href={`/account/login?redirect=${encodeURIComponent(`/invoice/${orderNumber}`)}`}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-zinc-900 text-white text-xs font-bold uppercase tracking-wider hover:bg-[#E60012] transition-colors"
+          >
+            Masuk ke Akun
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   const order = await dataStore.getOrderByNumber(orderNumber);
 
   if (!order) {
@@ -35,13 +65,33 @@ export default async function InvoicePage({ params }: { params: Promise<{ orderN
     );
   }
 
+  const isStaff = STAFF_ROLES.includes(session.role as (typeof STAFF_ROLES)[number]);
+  const isOwnerOfOrder = Boolean(order.user_id && order.user_id === session.userId);
+  if (!isStaff && !isOwnerOfOrder) {
+    return (
+      <div className="min-h-screen bg-zinc-100 flex items-center justify-center p-4">
+        <div className="bg-white p-8 border border-zinc-300 max-w-md w-full text-center space-y-4">
+          <Lock className="w-8 h-8 mx-auto text-[#E60012]" />
+          <h1 className="text-lg font-black uppercase text-zinc-900">Akses Faktur Ditolak</h1>
+          <p className="text-xs text-zinc-600">
+            Faktur transaksi #{orderNumber} hanya dapat diakses oleh pemesan atau staf resmi.
+          </p>
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-zinc-900 text-white text-xs font-bold uppercase tracking-wider hover:bg-[#E60012] transition-colors"
+          >
+            <ArrowLeft size={14} /> Kembali ke Toko
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   const subtotal = order.items.reduce((s, it) => s + it.price * it.quantity, 0);
 
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900 py-6 px-3 sm:px-6 selection:bg-[#E60012] selection:text-white">
       <div className="max-w-4xl mx-auto space-y-4">
-        
-        {/* Navigation Bar */}
         <div className="flex items-center justify-between no-print">
           <Link
             href="/"
@@ -55,16 +105,13 @@ export default async function InvoicePage({ params }: { params: Promise<{ orderN
               className="text-xs font-bold uppercase tracking-wider bg-zinc-950 hover:bg-[#E60012] text-white flex items-center gap-1.5 px-3 py-1.5 transition-colors shadow-xs"
             >
               <Truck size={14} />
-              <span>Lacak Pengiriman 🚚</span>
+              <span>Lacak Pengiriman</span>
             </Link>
             <InvoicePrintButton />
           </div>
         </div>
 
-        {/* Invoice Card */}
         <div className="bg-white border border-zinc-300 shadow-md p-6 sm:p-10 space-y-8">
-          
-          {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-zinc-200 gap-4">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-[#E60012] text-white flex flex-col items-center justify-center font-black tracking-tighter leading-none shrink-0 shadow-xs">
@@ -76,7 +123,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ orderN
                   UrbanStyle Store
                 </h1>
                 <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">
-                  LifeWear Essentials • Modul Transaksi (TPS)
+                  LifeWear Essentials • Faktur Resmi Transaksi
                 </p>
               </div>
             </div>
@@ -101,7 +148,6 @@ export default async function InvoicePage({ params }: { params: Promise<{ orderN
             </div>
           </div>
 
-          {/* Customer & Shipping Info */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 p-4 bg-zinc-50 border border-zinc-200 text-xs">
             <div className="space-y-1">
               <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Data Pemesan:</p>
@@ -127,12 +173,11 @@ export default async function InvoicePage({ params }: { params: Promise<{ orderN
                 </span>
               </div>
               <p className="text-[11px] text-zinc-500 pt-1">
-                Verifikasi Transaksi Otomatis Terhubung ke Server SIM
+                Verifikasi Pembayaran Otomatis UrbanStyle Live Store
               </p>
             </div>
           </div>
 
-          {/* Items Table */}
           <div>
             <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-600 mb-2">
               Rincian Item Busana Dipesan:
@@ -165,19 +210,15 @@ export default async function InvoicePage({ params }: { params: Promise<{ orderN
             </div>
           </div>
 
-          {/* QRIS / Bank Transfer Display and Financial Total */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-zinc-200 items-start">
             <InvoicePaymentSection order={order} />
             <InvoicePriceSummary order={order} subtotal={subtotal} />
           </div>
 
-          {/* Official Store Footer Notice */}
           <div className="pt-6 border-t border-zinc-200 text-center text-[11px] text-zinc-400">
-            Faktur Pembayaran Resmi UrbanStyle LifeWear Tokyo • Simpan bukti transaksi ini untuk keperluan verifikasi dan klaim garansi.
+            Faktur Pembayaran Resmi UrbanStyle LifeWear • Simpan bukti transaksi ini untuk keperluan verifikasi.
           </div>
-
         </div>
-
       </div>
     </div>
   );

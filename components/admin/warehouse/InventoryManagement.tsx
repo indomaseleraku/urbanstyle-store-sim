@@ -7,7 +7,7 @@ import { InventoryAdjustModal } from './InventoryAdjustModal';
 import { InventoryAuditLog } from './InventoryAuditLog';
 
 export const InventoryManagement: React.FC = () => {
-  const { products, adjustStock, stockAdjustments } = useAdminSuite();
+  const { products, adjustStock, stockAdjustments, globalSearch } = useAdminSuite();
 
   const [search, setSearch] = useState('');
   const [selectedProductForAdj, setSelectedProductForAdj] = useState<Product | null>(null);
@@ -17,11 +17,14 @@ export const InventoryManagement: React.FC = () => {
   const [adjType, setAdjType] = useState<'add' | 'subtract'>('add');
   const [adjReason, setAdjReason] = useState<StockAdjustment['reason']>('Audit Fisik');
 
+  const query = (search || globalSearch).trim().toLowerCase();
+
   const filteredProducts = products.filter((p) => {
     const matchesSearch =
-      p.sku.toLowerCase().includes(search.toLowerCase()) ||
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.rackLocation.toLowerCase().includes(search.toLowerCase());
+      !query ||
+      p.sku.toLowerCase().includes(query) ||
+      p.name.toLowerCase().includes(query) ||
+      p.rackLocation.toLowerCase().includes(query);
     return matchesSearch;
   });
 

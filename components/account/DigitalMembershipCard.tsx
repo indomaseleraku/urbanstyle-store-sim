@@ -10,8 +10,9 @@ interface DigitalMembershipCardProps {
 }
 
 export default function DigitalMembershipCard({ user }: DigitalMembershipCardProps) {
-  const memberIdSuffix = user?.id ? user.id.replace(/-/g, '').slice(0, 6).toUpperCase() : '8829';
+  const memberIdSuffix = user?.id ? user.id.replace(/-/g, '').slice(0, 6).toUpperCase() : 'GUEST';
   const fullMemberCode = `US-MEMBER-${memberIdSuffix}-2026`;
+  const isStaffMember = ['admin', 'owner', 'gudang', 'kasir'].includes(user?.role || '');
 
   // Visual Barcode Bars generator (Alternating widths pattern for high-fidelity Uniqlo barcode)
   const barcodePattern = [
@@ -49,11 +50,11 @@ export default function DigitalMembershipCard({ user }: DigitalMembershipCardPro
 
           <div className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 bg-white/10 border border-white/15 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-[#E60012] shrink-0">
             <Sparkles size={11} className="text-amber-400" />
-            <span className="text-white">{user?.role === 'admin' ? 'ADMIN • VIP' : 'ACTIVE MEMBER'}</span>
+            <span className="text-white">{isStaffMember ? 'STAFF • VIP' : 'ACTIVE MEMBER'}</span>
           </div>
         </div>
 
-        {/* Member Name & Points */}
+        {/* Member Name & Size Preference */}
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
           <div>
             <p className="text-[9px] sm:text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
@@ -65,10 +66,10 @@ export default function DigitalMembershipCard({ user }: DigitalMembershipCardPro
           </div>
           <div className="sm:text-right">
             <p className="text-[9px] sm:text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
-              POIN LIFEWEAR
+              UKURAN & STATUS
             </p>
             <p className="text-sm sm:text-base font-black font-mono text-amber-400">
-              1.250 PTS
+              SIZE {user?.preferred_size || 'M'} • AKTIF
             </p>
           </div>
         </div>

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { DynamicQRISCard } from '../DynamicQRISCard';
 import { RealtimePaymentStatus } from '../RealtimePaymentStatus';
+import { copyToClipboard } from '@/lib/utils/clipboard';
 
 interface CheckoutSuccessViewProps {
   order: Order;
@@ -30,22 +31,25 @@ export const CheckoutSuccessView: React.FC<CheckoutSuccessViewProps> = ({
   const [copiedRekening, setCopiedRekening] = useState(false);
   const [copiedNominal, setCopiedNominal] = useState(false);
 
-  const copyOrderNumber = () => {
-    navigator.clipboard.writeText(order.order_number);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const copyOrderNumber = async () => {
+    if (await copyToClipboard(order.order_number)) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
-  const copyRekening = (noRek: string) => {
-    navigator.clipboard.writeText(noRek);
-    setCopiedRekening(true);
-    setTimeout(() => setCopiedRekening(false), 2000);
+  const copyRekening = async (noRek: string) => {
+    if (await copyToClipboard(noRek)) {
+      setCopiedRekening(true);
+      setTimeout(() => setCopiedRekening(false), 2000);
+    }
   };
 
-  const copyNominal = (nom: number) => {
-    navigator.clipboard.writeText(String(nom));
-    setCopiedNominal(true);
-    setTimeout(() => setCopiedNominal(false), 2000);
+  const copyNominal = async (nom: number) => {
+    if (await copyToClipboard(String(nom))) {
+      setCopiedNominal(true);
+      setTimeout(() => setCopiedNominal(false), 2000);
+    }
   };
 
   return (
@@ -191,7 +195,7 @@ export const CheckoutSuccessView: React.FC<CheckoutSuccessViewProps> = ({
             className="py-3 bg-black hover:bg-zinc-800 text-white text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors rounded-none"
           >
             <Truck size={14} />
-            <span>Lacak Pengiriman 🚚</span>
+            <span>Lacak Pengiriman</span>
           </a>
 
           <a

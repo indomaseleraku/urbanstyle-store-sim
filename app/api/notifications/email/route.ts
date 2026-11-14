@@ -1,9 +1,19 @@
+// app/api/notifications/email/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { sendOrderNotificationEmail } from '@/lib/services/emailSmtpService';
 import { dataStore } from '@/lib/store';
+import { getRequestSession, STAFF_ROLES } from '@/lib/services/sessionServerHelper';
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await getRequestSession(req);
+    if (!session.valid || !session.userId || !session.role) {
+      return NextResponse.json(
+        { success: false, message: 'Autentikasi diperlukan untuk mengirim faktur email.' },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json();
     const orderNumber = String(body.orderNumber || '').trim();
 
@@ -22,11 +32,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (order.status === 'Menunggu Pembayaran') {
+    const isStaff = STAFF_ROLES.includes(session.role as (typeof STAFF_ROLES)[number]);
+    const isOwner = Boolean(order.user_id && order.user_id === session.userId);
+    if (!isStaff && !isOwner) {
+      return NextResponse.json(
+        { success: false, message: 'Akses ditolak: Anda tidak berhak memicu faktur pesanan ini.' },
+        { status: 403 }
+      );
+    }
+
+    if (order.status === 'Menunggu Pembayaran' || order.status === 'Dibatalkan') {
       return NextResponse.json(
         {
           success: false,
-          message: 'Pesanan belum dibayar. Email faktur hanya dikirim setelah pembayaran terverifikasi lunas.',
+          message: 'Email faktur hanya dikirim untuk pesanan yang sudah terverifikasi lunas.',
         },
         { status: 400 }
       );
@@ -40,7 +59,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    let toEmail = String(order.customer_email || body.toEmail || '').trim().toLowerCase();
+    let toEmail = String(order.customer_email || '').trim().toLowerCase();
     if (!toEmail && order.user_id) {
       const profile = await dataStore.getUserProfile(order.user_id);
       if (profile?.email) {
@@ -50,14 +69,17 @@ export async function POST(req: NextRequest) {
 
     if (!toEmail || !toEmail.includes('@')) {
       return NextResponse.json(
-        { success: false, message: 'Alamat email pelanggan tidak valid atau tidak ditemukan pada pesanan.' },
+        { success: false, message: 'Alamat email pemesan tidak tersedia di database.' },
         { status: 400 }
       );
     }
 
-    const itemsSummary = (order.items && order.items.length > 0)
-      ? order.items.map(it => `${it.product_name} (${it.selected_size}, ${it.selected_color}) x${it.quantity}`).join(', ')
-      : 'Koleksi Busana UrbanStyle LifeWear';
+    const itemsSummary =
+      order.items && order.items.length > 0
+        ? order.items
+            .map((it) => `${it.product_name} (${it.selected_size}, ${it.selected_color}) x${it.quantity}`)
+            .join(', ')
+        : 'Koleksi Busana UrbanStyle LifeWear';
 
     const res = await sendOrderNotificationEmail({
       toEmail,
@@ -76,9 +98,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (orderNumber) {
-      await dataStore.markInvoiceEmailSent(orderNumber);
-    }
+    await dataStore.markInvoiceEmailSent(orderNumber);
 
     return NextResponse.json({
       success: true,

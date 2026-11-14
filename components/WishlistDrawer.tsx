@@ -111,50 +111,67 @@ export default function WishlistDrawer({
                     </p>
 
                     {/* Selector Ukuran (TICKET-03) */}
-                    <div className="pt-1.5 space-y-1">
-                      <div className="flex items-center justify-between text-[10px]">
-                        <span className="font-bold text-zinc-500 uppercase tracking-wider">Ukuran:</span>
-                        <span className="font-mono font-bold text-zinc-900">
-                          {selectedSizes[prod.id] || prod.sizes[0] || 'M'}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {(prod.sizes && prod.sizes.length > 0 ? prod.sizes : ['S', 'M', 'L', 'XL']).map((sz) => {
-                          const isChosen = (selectedSizes[prod.id] || prod.sizes[0] || 'M') === sz;
-                          return (
-                            <button
-                              key={sz}
-                              type="button"
-                              onClick={() => setSelectedSizes((prev) => ({ ...prev, [prod.id]: sz }))}
-                              className={`px-2 py-0.5 text-[10px] font-bold uppercase transition-all border rounded-none min-w-[28px] text-center ${
-                                isChosen
-                                  ? 'bg-zinc-950 text-white border-zinc-950 shadow-xs'
-                                  : 'bg-white text-zinc-700 border-zinc-300 hover:border-zinc-950'
-                              }`}
-                            >
-                              {sz}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
+                    {(() => {
+                      const sizeList = prod.sizes && prod.sizes.length > 0 ? prod.sizes : ['S', 'M', 'L', 'XL'];
+                      const firstAvail = sizeList.find((sz) => !prod.out_of_stock_sizes?.includes(sz)) || sizeList[0] || 'M';
+                      const activeSz = selectedSizes[prod.id] || firstAvail;
+                      const isActiveOos = Boolean(prod.out_of_stock_sizes?.includes(activeSz));
+                      return (
+                        <>
+                          <div className="pt-1.5 space-y-1">
+                            <div className="flex items-center justify-between text-[10px]">
+                              <span className="font-bold text-zinc-500 uppercase tracking-wider">Ukuran:</span>
+                              <span className="font-mono font-bold text-zinc-900">
+                                {activeSz}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {sizeList.map((sz) => {
+                                const isChosen = activeSz === sz;
+                                const isSoldOutSize = Boolean(prod.out_of_stock_sizes?.includes(sz));
+                                return (
+                                  <button
+                                    key={sz}
+                                    type="button"
+                                    disabled={isSoldOutSize}
+                                    onClick={() => !isSoldOutSize && setSelectedSizes((prev) => ({ ...prev, [prod.id]: sz }))}
+                                    title={isSoldOutSize ? `Ukuran ${sz} habis` : `Pilih ukuran ${sz}`}
+                                    className={`px-2 py-0.5 text-[10px] font-bold uppercase transition-all border rounded-none min-w-[28px] text-center ${
+                                      isSoldOutSize
+                                        ? 'bg-zinc-100 text-zinc-400 border-zinc-200 line-through opacity-50 cursor-not-allowed'
+                                        : isChosen
+                                        ? 'bg-zinc-950 text-white border-zinc-950 shadow-xs cursor-pointer'
+                                        : 'bg-white text-zinc-700 border-zinc-300 hover:border-zinc-950 cursor-pointer'
+                                    }`}
+                                  >
+                                    {sz}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
 
-                    <div className="pt-2 flex items-center gap-2">
-                      <button
-                        onClick={() => onMoveToCart(prod, selectedSizes[prod.id] || prod.sizes[0] || 'M')}
-                        className="px-3 py-1.5 bg-[#111111] hover:bg-[#E60012] text-white text-[11px] font-bold uppercase tracking-wider transition-colors flex items-center gap-1 rounded-none shadow-xs"
-                      >
-                        <ShoppingBag size={12} />
-                        <span>Ke Keranjang</span>
-                      </button>
-                      <button
-                        onClick={() => onRemoveFromWishlist(prod.id)}
-                        className="p-1.5 text-zinc-400 hover:text-red-600 transition-colors"
-                        title="Hapus dari favorit"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
+                          <div className="pt-2 flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={prod.stock <= 0 || isActiveOos}
+                              onClick={() => onMoveToCart(prod, activeSz)}
+                              className="px-3 py-1.5 bg-[#111111] hover:bg-[#E60012] text-white text-[11px] font-bold uppercase tracking-wider transition-colors flex items-center gap-1 rounded-none shadow-xs disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                            >
+                              <ShoppingBag size={12} />
+                              <span>{prod.stock <= 0 ? 'Stok Habis' : isActiveOos ? 'Ukuran Habis' : 'Ke Keranjang'}</span>
+                            </button>
+                            <button
+                              onClick={() => onRemoveFromWishlist(prod.id)}
+                              className="p-1.5 text-zinc-400 hover:text-red-600 transition-colors cursor-pointer"
+                              title="Hapus dari favorit"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               ))

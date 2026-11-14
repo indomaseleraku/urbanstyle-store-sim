@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowUpDown, Filter, X, LayoutGrid, Columns } from 'lucide-react';
+import { ArrowUpDown, Filter, X, LayoutGrid, Columns, Flame } from 'lucide-react';
 
 interface QuickCategory {
   id: string;
@@ -20,7 +20,7 @@ const QUICK_CATEGORIES: QuickCategory[] = [
   { id: 'hoodie', name: 'Hoodie & Sweater', slug: 'hoodie' },
   { id: 'celana-panjang', name: 'Celana Panjang', slug: 'celana-panjang' },
   { id: 'celana-pendek', name: 'Celana Pendek', slug: 'celana-pendek' },
-  { id: 'sale', name: 'Promo 🔥', slug: 'sale' },
+  { id: 'sale', name: 'Promo', slug: 'sale' },
 ];
 
 interface FilterSortBarProps {
@@ -82,7 +82,10 @@ export default function FilterSortBar({
                     : 'bg-zinc-50 hover:bg-zinc-100 text-zinc-700 border-zinc-200'
                 }`}
               >
-                {q.name}
+                <span className="inline-flex items-center gap-1">
+                  {q.name}
+                  {q.slug === 'sale' && <Flame size={12} className={isActive ? 'text-white' : 'text-[#E60012]'} aria-hidden="true" />}
+                </span>
               </button>
             );
           })}

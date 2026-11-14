@@ -11,7 +11,16 @@ import { OrderTrendChart } from './OrderTrendChart';
 export const StoreOverview: React.FC = () => {
   const { orders, products, formatRupiah, setActiveNav, updateOrderStatus } = useAdminSuite();
 
-  const todayOrders = orders.filter((o) => o.createdAt.includes('Hari ini') || o.createdAt.includes('14 Okt') || o.createdAt.includes('13 Okt'));
+  const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+  const todayOrders = orders.filter((o) => {
+    if (o.rawCreatedAt) {
+      const d = new Date(o.rawCreatedAt);
+      if (!Number.isNaN(d.getTime())) {
+        return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' }) === todayKey;
+      }
+    }
+    return o.createdAt.includes('Hari ini');
+  });
   const todayRevenue = todayOrders.reduce((acc, curr) => acc + curr.total, 0);
 
   const pendingConfirmation = orders.filter((o) => o.status === 'processing');
@@ -46,10 +55,10 @@ export const StoreOverview: React.FC = () => {
         <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs transition-colors">
           <span className="text-[11px] sm:text-xs font-medium text-slate-500 dark:text-slate-400 truncate block">Omset Hari Ini</span>
           <div className="text-sm sm:text-base lg:text-lg font-bold text-slate-900 dark:text-white mt-1 tabular-nums truncate">
-            {formatRupiah(todayRevenue || 2864000)}
+            {formatRupiah(todayRevenue)}
           </div>
           <p className="text-[10px] sm:text-[11px] text-emerald-700 dark:text-emerald-400 font-medium mt-0.5 flex items-center">
-            <ArrowUpRight className="w-3 h-3 inline mr-0.5 shrink-0" /> {todayOrders.length || 3} transaksi
+            <ArrowUpRight className="w-3 h-3 inline mr-0.5 shrink-0" /> {todayOrders.length} transaksi
           </p>
         </div>
 
@@ -128,7 +137,7 @@ export const StoreOverview: React.FC = () => {
           </div>
 
           <div className="mt-4 space-y-3">
-            {products.slice(0, 4).map((p) => (
+            {[...products].sort((a, b) => b.salesCount - a.salesCount).slice(0, 4).map((p) => (
               <div key={p.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
                 <img
                   src={p.imageUrl}

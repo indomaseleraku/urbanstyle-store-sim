@@ -1,7 +1,7 @@
 // components/home/EditorialSections.tsx
 'use client';
 
-import { Sparkles, ArrowRight } from 'lucide-react';
+import { Sparkles, ArrowRight, Flame, Star } from 'lucide-react';
 import ProductCard from '@/components/ProductCard';
 import { Product } from '@/lib/types';
 import { STYLE_HINT_LOOKS } from '@/lib/constants/editorial';
@@ -29,7 +29,7 @@ export default function EditorialSections({
 }: EditorialSectionsProps) {
   return (
     <>
-      {/* 1. Curated Section 1: LIMITED OFFER 🔥 */}
+      {/* 1. Curated Section 1: LIMITED OFFER */}
       {limitedOfferProducts.length > 0 && (
         <section id="limited-offer" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 border-b border-zinc-200">
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-6">
@@ -40,7 +40,7 @@ export default function EditorialSections({
               </div>
               <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-zinc-950 flex items-center gap-2">
                 <span>LIMITED OFFER</span>
-                <span className="text-[#E60012]">🔥</span>
+                <Flame size={26} strokeWidth={2.25} className="text-[#E60012]" aria-hidden="true" />
               </h2>
               <p className="text-xs text-zinc-500 mt-1">
                 Koleksi pilihan dengan potongan harga khusus untuk waktu terbatas.
@@ -71,7 +71,7 @@ export default function EditorialSections({
         </section>
       )}
 
-      {/* 2. Curated Section 2: BEST OF LIFEWEAR ⭐ */}
+      {/* 2. Curated Section 2: BEST OF LIFEWEAR */}
       {bestOfLifeWearProducts.length > 0 && (
         <section id="best-seller" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 border-b border-zinc-200">
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-6">
@@ -81,7 +81,7 @@ export default function EditorialSections({
               </div>
               <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-zinc-950 flex items-center gap-2">
                 <span>BEST OF LIFEWEAR</span>
-                <span className="text-amber-500">⭐</span>
+                <Star size={24} strokeWidth={2} className="text-amber-500 fill-amber-500" aria-hidden="true" />
               </h2>
               <p className="text-xs text-zinc-500 mt-1">
                 Koleksi paling dicari dengan tingkat kepuasan pelanggan tertinggi di atas 4.8 bintang.

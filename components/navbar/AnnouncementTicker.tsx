@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { copyToClipboard } from '@/lib/utils/clipboard';
 import Link from 'next/link';
 import { Truck, RotateCcw, Copy } from 'lucide-react';
 import { ModalType } from '../InformationModals';
@@ -17,10 +18,11 @@ export default function AnnouncementTicker({
 }: AnnouncementTickerProps) {
   const [copiedVoucher, setCopiedVoucher] = useState(false);
 
-  const handleCopyVoucher = () => {
-    navigator.clipboard.writeText('URBANWELCOME50');
-    setCopiedVoucher(true);
-    setTimeout(() => setCopiedVoucher(false), 2500);
+  const handleCopyVoucher = async () => {
+    if (await copyToClipboard('URBANWELCOME50')) {
+      setCopiedVoucher(true);
+      setTimeout(() => setCopiedVoucher(false), 2500);
+    }
   };
 
   return (
@@ -77,7 +79,7 @@ export default function AnnouncementTicker({
               href="/admin"
               className="text-[#E60012] font-bold text-[10px] hover:underline"
             >
-              Dasbor SIM ↗
+              Dasbor Admin
             </Link>
           )}
         </div>

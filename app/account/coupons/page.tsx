@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { dataStore } from '@/lib/store';
 import { Coupon } from '@/lib/types';
 import { Tag, Copy, Check, Sparkles } from 'lucide-react';
+import { copyToClipboard } from '@/lib/utils/clipboard';
 
 export default function MemberCouponsPage() {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
@@ -20,10 +21,11 @@ export default function MemberCouponsPage() {
     loadCoupons();
   }, []);
 
-  const handleCopy = (code: string) => {
-    navigator.clipboard.writeText(code);
-    setCopiedCode(code);
-    setTimeout(() => setCopiedCode(null), 2500);
+  const handleCopy = async (code: string) => {
+    if (await copyToClipboard(code)) {
+      setCopiedCode(code);
+      setTimeout(() => setCopiedCode(null), 2500);
+    }
   };
 
   return (

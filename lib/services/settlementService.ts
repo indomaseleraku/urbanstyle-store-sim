@@ -1,8 +1,7 @@
 // lib/services/settlementService.ts
 // Autonomous Settlement & Mutation Processing Engine (TPS)
-// Modul verifikasi pembayaran otomatis (Background Daemon & Webhook Receiver)
 
-import { Order, OrderStatus } from '../types';
+import { Order } from '../types';
 import { orderService } from './orderService';
 import { orderExpirationService } from './orderExpirationService';
 
@@ -14,7 +13,10 @@ export interface PaymentWebhookPayload {
   transaction_status?: string;
   raw_text?: string;
   source?: string;
-  signature?: string;
+  is_test?: boolean;
+  channel?: string;
+  app_name?: string;
+  title?: string;
 }
 
 export interface SettlementCheckResult {
@@ -34,8 +36,9 @@ export interface WebhookProcessResult {
   message: string;
 }
 
-// Auto-settlement timer dinonaktifkan (Strict Real Webhook Mode)
-// Pesanan HANYA lunas jika ada notifikasi mutasi masuk dari aplikasi PaymentGatewayin
+const PAID_STATUS_TOKENS = new Set(['PAID', 'SETTLED', 'SETTLEMENT', 'CAPTURE', 'SUCCESS', 'LUNAS', 'DIBAYAR']);
+const CANCEL_STATUS_TOKENS = new Set(['EXPIRED', 'FAILED', 'CANCELLED', 'CANCELED', 'DENY', 'REJECTED', 'DIBATALKAN']);
+
 let autoSettleDelayMs = 10_000;
 let isAutoSettlementEnabled = false;
 
@@ -56,18 +59,9 @@ export const settlementService = {
     isAutoSettlementEnabled = Boolean(enabled);
   },
 
-  /**
-   * Pengecekan status dan pemicu penyelesaian otomatis (Autonomous Daemon)
-   * Dipanggil secara berkala oleh Client (Invoice Page) atau background cron
-   */
   async checkAndSettleOrder(orderNumber: string): Promise<SettlementCheckResult> {
     if (!orderNumber || typeof orderNumber !== 'string') {
-      return {
-        success: false,
-        order: null,
-        settled: false,
-        reason: 'Nomor pesanan tidak valid.',
-      };
+      return { success: false, order: null, settled: false, reason: 'Nomor pesanan tidak valid.' };
     }
 
     const order = await orderService.getOrderByNumber(orderNumber.trim());
@@ -80,7 +74,6 @@ export const settlementService = {
       };
     }
 
-    // Jika pesanan sudah dibatalkan
     if (order.status === 'Dibatalkan') {
       return {
         success: true,
@@ -91,7 +84,6 @@ export const settlementService = {
       };
     }
 
-    // Jika sudah lunas atau dalam tahapan pengiriman
     if (order.status !== 'Menunggu Pembayaran') {
       return {
         success: true,
@@ -102,7 +94,6 @@ export const settlementService = {
       };
     }
 
-    // Cek batas waktu pembayaran (20 menit)
     const { remainingMs, isExpired } = orderExpirationService.getRemainingTime(order.created_at);
     if (isExpired) {
       await orderExpirationService.expireOrder(order);
@@ -115,55 +106,57 @@ export const settlementService = {
       };
     }
 
-    // Pesanan tetap dalam status Menunggu Pembayaran sampai webhook notifikasi HP masuk
     return {
       success: true,
       order,
       settled: false,
       remainingMs,
-      reason: 'Menunggu notifikasi pembayaran masuk dari aplikasi PaymentGatewayin...',
+      reason: 'Menunggu notifikasi pembayaran masuk...',
     };
   },
 
-  /**
-   * Pemrosesan sinyal Webhook & Mutasi Masuk (MacroDroid / GoBiz / Bank Transfer / Payment Gateway)
-   */
   async processPaymentWebhook(payload: PaymentWebhookPayload): Promise<WebhookProcessResult> {
     if (!payload || typeof payload !== 'object') {
-      return {
-        success: false,
-        message: 'Payload webhook tidak valid atau kosong.',
-      };
+      return { success: false, message: 'Payload webhook tidak valid atau kosong.' };
     }
 
-    // Ping check dari aplikasi Android PaymentGatewayin
-    const anyPayload = payload as any;
     if (
-      anyPayload.is_test ||
-      anyPayload.channel === 'Test Ping' ||
-      anyPayload.app_name === 'Test Ping' ||
-      anyPayload.title === 'Uji Coba Ping' ||
-      (typeof anyPayload.raw_text === 'string' && anyPayload.raw_text.toLowerCase().includes('ping'))
+      payload.is_test ||
+      payload.channel === 'Test Ping' ||
+      payload.app_name === 'Test Ping' ||
+      payload.title === 'Uji Coba Ping' ||
+      (typeof payload.raw_text === 'string' && payload.raw_text.toLowerCase().includes('ping'))
     ) {
+      return { success: true, message: 'Koneksi ping webhook terverifikasi.' };
+    }
+
+    const rawStatus = String(payload.transaction_status || payload.status || '').trim().toUpperCase();
+    const isCancelEvent = Boolean(rawStatus && CANCEL_STATUS_TOKENS.has(rawStatus));
+    const isExplicitPaidEvent = !rawStatus || PAID_STATUS_TOKENS.has(rawStatus);
+
+    if (rawStatus && !isExplicitPaidEvent && !isCancelEvent) {
       return {
-        success: true,
-        message: 'Koneksi ping dari aplikasi PaymentGatewayin berhasil tersambung!',
+        success: false,
+        message: `Status transaksi webhook "${rawStatus}" diabaikan karena bukan event penyelesaian atau pembatalan.`,
       };
     }
 
     let targetOrderNumber = (payload.order_number || payload.order_id || '').trim();
-    let numericAmount = payload.amount !== undefined ? Number(payload.amount) : undefined;
+    let numericAmount: number | undefined;
+    if (payload.amount !== undefined && payload.amount !== null && payload.amount !== '') {
+      const parsed = Number(payload.amount);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return { success: false, message: 'Nominal mutasi webhook tidak valid.' };
+      }
+      numericAmount = parsed;
+    }
 
-    // Jika menerima raw_text dari notifikasi HP (misal GoBiz / SMS Banking / BCA Push Notif)
     if (payload.raw_text && typeof payload.raw_text === 'string') {
-      // 1. Ekstraksi nomor pesanan jika ada ORD-YYYYMMDD-XXX
-      const orderMatch = payload.raw_text.match(/ORD-\d{8}-\d{3,4}/i);
+      const orderMatch = payload.raw_text.match(/ORD-\d{8}-[A-Z0-9]{3,10}/i);
       if (orderMatch && !targetOrderNumber) {
         targetOrderNumber = orderMatch[0].toUpperCase();
       }
 
-      // 2. Ekstraksi nominal mutasi uang masuk
-      // Contoh: "Rp 100.000", "Rp1.000", "sebesar 50.000"
       const amountMatch = payload.raw_text.match(/(?:rp|sebesar|nominal)\s*[:\.]?\s*([\d\.,]+)/i);
       if (amountMatch && numericAmount === undefined) {
         const cleanedStr = amountMatch[1].replace(/\./g, '').replace(/,/g, '');
@@ -175,21 +168,24 @@ export const settlementService = {
     }
 
     let order: Order | null = null;
-
-    // A. Cari berdasarkan order_number jika tersedia
     if (targetOrderNumber) {
       order = await orderService.getOrderByNumber(targetOrderNumber);
-    }
-
-    // B. Jika order_number tidak ada namun ada nominal mutasi, cari order "Menunggu Pembayaran" yang pas
-    if (!order && numericAmount !== undefined && numericAmount > 0) {
+    } else if (numericAmount !== undefined && numericAmount > 0 && isExplicitPaidEvent) {
+      // Hanya izinkan pencocokan berdasar nominal jika TEPAT SATU pesanan aktif belum kedaluwarsa cocok
       const allOrders = await orderService.getOrders();
-      // Prioritaskan order yang sedang menunggu pembayaran dengan total_amount cocok
-      const pendingMatch = allOrders.find(
-        (o) => o.status === 'Menunggu Pembayaran' && Math.round(Number(o.total_amount)) === Math.round(numericAmount!)
+      const candidates = allOrders.filter(
+        (o) =>
+          o.status === 'Menunggu Pembayaran' &&
+          !orderExpirationService.getRemainingTime(o.created_at).isExpired &&
+          Math.round(Number(o.total_amount)) === Math.round(numericAmount!)
       );
-      if (pendingMatch) {
-        order = pendingMatch;
+      if (candidates.length === 1) {
+        order = candidates[0];
+      } else if (candidates.length > 1) {
+        return {
+          success: false,
+          message: `Terdapat ${candidates.length} pesanan tertunda dengan nominal identik. Sertakan nomor pesanan resmi.`,
+        };
       }
     }
 
@@ -198,11 +194,29 @@ export const settlementService = {
         success: false,
         message: targetOrderNumber
           ? `Pesanan dengan nomor #${targetOrderNumber} tidak ditemukan.`
-          : `Tidak ditemukan pesanan tertunda dengan nominal mutasi Rp ${numericAmount?.toLocaleString('id-ID') || 0}.`,
+          : 'Nomor pesanan tidak ditemukan pada payload webhook.',
       };
     }
 
-    // Cek apakah status sudah lunas
+    if (isCancelEvent) {
+      if (order.status === 'Menunggu Pembayaran') {
+        await orderExpirationService.expireOrder(order);
+        return {
+          success: true,
+          order_number: order.order_number,
+          amount: Number(order.total_amount),
+          previous_status: 'Menunggu Pembayaran',
+          new_status: 'Dibatalkan',
+          message: `Pesanan #${order.order_number} dibatalkan dan stok dikembalikan sesuai status webhook (${rawStatus}).`,
+        };
+      }
+      return {
+        success: false,
+        order_number: order.order_number,
+        message: `Pesanan #${order.order_number} berstatus ${order.status} sehingga tidak dapat dibatalkan.`,
+      };
+    }
+
     if (order.status !== 'Menunggu Pembayaran') {
       return {
         success: true,
@@ -210,42 +224,53 @@ export const settlementService = {
         amount: Number(order.total_amount),
         previous_status: order.status,
         new_status: order.status,
-        message: `Pesanan #${order.order_number} sudah dalam status ${order.status}. Tidak perlu perubahan.`,
+        message: `Pesanan #${order.order_number} sudah dalam status ${order.status}.`,
       };
     }
 
-    // Validasi nominal jika disertakan dalam webhook
-    if (numericAmount !== undefined && numericAmount > 0) {
-      const expectedAmount = Math.round(Number(order.total_amount));
-      const receivedAmount = Math.round(numericAmount);
-      // Toleransi 0 rupiah (harus tepat)
-      if (receivedAmount !== expectedAmount) {
-        return {
-          success: false,
-          order_number: order.order_number,
-          message: `Nominal mutasi tidak cocok! Diterima: Rp ${receivedAmount.toLocaleString('id-ID')}, Tagihan: Rp ${expectedAmount.toLocaleString('id-ID')}.`,
-        };
-      }
+    const expectedAmount = Math.round(Number(order.total_amount));
+    if (numericAmount === undefined || Math.round(numericAmount) !== expectedAmount) {
+      return {
+        success: false,
+        order_number: order.order_number,
+        message: `Nominal mutasi tidak valid/tidak cocok! Diterima: Rp ${Math.round(numericAmount || 0).toLocaleString('id-ID')}, Tagihan: Rp ${expectedAmount.toLocaleString('id-ID')}.`,
+      };
     }
 
-    // Eksekusi verifikasi otomatis dari sistem
-    const prevStatus = order.status;
-    await orderService.updateOrderStatus(order.order_number, 'Dibayar');
+    const updated = await orderService.updateOrderStatus(
+      order.order_number,
+      'Dibayar',
+      undefined,
+      'Menunggu Pembayaran'
+    );
+    if (!updated) {
+      return {
+        success: false,
+        order_number: order.order_number,
+        message: `Gagal mengonfirmasi status lunas pesanan #${order.order_number}.`,
+      };
+    }
 
     return {
       success: true,
       order_number: order.order_number,
       amount: Number(order.total_amount),
-      previous_status: prevStatus,
+      previous_status: 'Menunggu Pembayaran',
       new_status: 'Dibayar',
-      message: `Pembayaran pesanan #${order.order_number} sebesar Rp ${Number(order.total_amount).toLocaleString('id-ID')} berhasil diverifikasi otomatis oleh sistem.`,
+      message: `Pembayaran pesanan #${order.order_number} sebesar Rp ${Number(order.total_amount).toLocaleString('id-ID')} berhasil diverifikasi.`,
     };
   },
 
-  /**
-   * Pelunasan langsung pesanan oleh kasir / verifikasi sistem
-   */
   async simulateInstantSettle(orderNumber: string): Promise<boolean> {
-    return await orderService.updateOrderStatus(orderNumber, 'Dibayar');
+    const order = await orderService.getOrderByNumber(orderNumber.trim());
+    if (!order || order.status !== 'Menunggu Pembayaran') {
+      return false;
+    }
+    return orderService.updateOrderStatus(
+      order.order_number,
+      'Dibayar',
+      undefined,
+      'Menunggu Pembayaran'
+    );
   },
 };

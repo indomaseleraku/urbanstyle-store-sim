@@ -16,6 +16,8 @@ export default function ProfilePage() {
   const [phone, setPhone] = useState(user?.phone || '');
   const [preferredSize, setPreferredSize] = useState<'S' | 'M' | 'L' | 'XL'>(user?.preferred_size || 'L');
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -25,15 +27,23 @@ export default function ProfilePage() {
     }
   }, [user]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateUser({
-      full_name: fullName,
-      phone,
+    setErrorMsg('');
+    setSavedSuccess(false);
+    setIsSaving(true);
+    const res = await updateUser({
+      full_name: fullName.trim(),
+      phone: phone.trim(),
       preferred_size: preferredSize,
     });
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 3000);
+    setIsSaving(false);
+    if (res.success) {
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    } else {
+      setErrorMsg(res.message || 'Gagal memperbarui profil. Silakan coba lagi.');
+    }
   };
 
   return (
@@ -61,6 +71,12 @@ export default function ProfilePage() {
           </div>
         )}
 
+        {errorMsg && (
+          <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-none">
+            {errorMsg}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-zinc-700 mb-1.5">
@@ -72,7 +88,7 @@ export default function ProfilePage() {
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="Contoh: Kimy Eka Ardiansyah"
+                placeholder="Masukkan nama lengkap Anda"
                 className="w-full pl-9 pr-3 py-2.5 border border-zinc-300 text-base md:text-xs focus:outline-none focus:border-black font-medium rounded-none"
                 required
               />
@@ -141,9 +157,10 @@ export default function ProfilePage() {
           <div className="pt-4 border-t border-zinc-200">
             <button
               type="submit"
-              className="px-6 py-3 bg-black hover:bg-[#E60012] text-white text-xs font-bold uppercase tracking-wider transition-colors rounded-none min-h-[44px]"
+              disabled={isSaving}
+              className="px-6 py-3 bg-black hover:bg-[#E60012] text-white text-xs font-bold uppercase tracking-wider transition-colors rounded-none min-h-[44px] disabled:opacity-50"
             >
-              Simpan Perubahan
+              {isSaving ? 'Menyimpan...' : 'Simpan Perubahan'}
             </button>
           </div>
         </form>
