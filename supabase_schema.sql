@@ -1,10 +1,10 @@
 -- ==============================================================================
--- URBANSTYLE STORE - SUPABASE SCHEMA V4.3 (HARDENED PRODUCTION MIRROR)
--- Project: qrrdfbdzcozjdaysfimi  |  Disinkronkan dari database live: 2026-11-14
+-- URBANSTYLE STORE - SUPABASE SCHEMA V4.4 (HARDENED PRODUCTION MIRROR)
+-- Project: qrrdfbdzcozjdaysfimi  |  Disinkronkan dari database live: 2026-11-15
 --
 -- AMAN dijalankan ulang: hanya CREATE ... IF NOT EXISTS, tidak menghapus data.
 -- RLS dikunci ketat: anon key hanya boleh baca katalog (categories, products,
--- reviews, active coupons) & kirim ulasan; seluruh tabel transaksi, profil,
+-- reviews, active coupons); seluruh tabel transaksi, profil, pengiriman ulasan,
 -- kredensial, alamat, wishlist akun, staf, dan admin hanya dapat diakses via
 -- service_role dari Next.js API routes yang memvalidasi HMAC session token.
 -- ==============================================================================
@@ -306,6 +306,23 @@ $$;
 REVOKE ALL ON FUNCTION atomic_deduct_stock(BIGINT, INT) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION atomic_deduct_stock(BIGINT, INT) TO service_role;
 
+CREATE OR REPLACE FUNCTION atomic_increment_coupon_usage(p_coupon_id BIGINT)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  UPDATE public.coupons
+  SET used_count = COALESCE(used_count, 0) + 1
+  WHERE id = p_coupon_id
+    AND (usage_limit IS NULL OR COALESCE(used_count, 0) < usage_limit);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION atomic_increment_coupon_usage(BIGINT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION atomic_increment_coupon_usage(BIGINT) TO service_role;
+
 -- ------------------------------------------------------------------------------
 -- 7. ROW LEVEL SECURITY (STRICT LEAST-PRIVILEGE)
 -- ------------------------------------------------------------------------------
@@ -347,7 +364,6 @@ END $$;
 CREATE POLICY "Public Read Categories"     ON categories FOR SELECT TO public USING (true);
 CREATE POLICY "Public Read Products"       ON products   FOR SELECT TO public USING (true);
 CREATE POLICY "Public Read Reviews"        ON reviews    FOR SELECT TO public USING (true);
-CREATE POLICY "Public Insert Reviews"      ON reviews    FOR INSERT TO public WITH CHECK (rating >= 1 AND rating <= 5);
 CREATE POLICY "Public Read Active Coupons" ON coupons    FOR SELECT TO public USING (is_active = true);
 
 -- Service Role Full Access (hanya dapat diakses oleh Next.js server routes)
